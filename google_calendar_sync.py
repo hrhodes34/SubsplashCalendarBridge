@@ -247,7 +247,7 @@ class GoogleCalendarSync:
     
     def sync_events(self, events: List[Dict]) -> Dict:
         """
-        Sync events from Subsplash to Google Calendar
+        Sync events from Subsplash to Google Calendar with comprehensive duplicate detection
         
         Args:
             events: List of events from Subsplash
@@ -262,45 +262,81 @@ class GoogleCalendarSync:
             results = {
                 'created': 0,
                 'updated': 0,
+                'skipped': 0,
                 'deleted': 0,
                 'errors': 0,
                 'details': []
             }
             
-            # Get existing events from Google Calendar
-            existing_events = self.get_events()
-            existing_event_map = {event['summary']: event for event in existing_events}
+            # Get existing events from Google Calendar for the relevant date range
+            # Calculate date range based on events being synced
+            if events:
+                event_dates = []
+                for event in events:
+                    start = event.get('start')
+                    if start:
+                        try:
+                            if isinstance(start, str):
+                                event_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                            else:
+                                event_dt = start
+                            event_dates.append(event_dt)
+                        except:
+                            continue
+                
+                if event_dates:
+                    min_date = min(event_dates)
+                    max_date = max(event_dates)
+                    # Add some buffer to the date range
+                    time_min = (min_date - timedelta(days=1)).isoformat() + 'Z'
+                    time_max = (max_date + timedelta(days=1)).isoformat() + 'Z'
+                else:
+                    # Default to next year if we can't determine date range
+                    time_min = datetime.now().isoformat() + 'Z'
+                    time_max = (datetime.now() + timedelta(days=365)).isoformat() + 'Z'
+            else:
+                # No events to sync
+                time_min = datetime.now().isoformat() + 'Z'
+                time_max = (datetime.now() + timedelta(days=365)).isoformat() + 'Z'
             
-            # Process each event
+            logger.info(f"Fetching existing Google Calendar events from {time_min} to {time_max}")
+            existing_events = self.get_events(time_min=time_min, time_max=time_max)
+            logger.info(f"Found {len(existing_events)} existing events in Google Calendar")
+            
+            # Process each event with comprehensive duplicate detection
             for event_data in events:
                 try:
                     event_title = event_data.get('title', '')
                     
-                    if event_title in existing_event_map:
-                        # Update existing event
-                        existing_event = existing_event_map[event_title]
-                        if self.update_event(existing_event['id'], event_data):
-                            results['updated'] += 1
-                            results['details'].append({
-                                'action': 'updated',
-                                'title': event_title,
-                                'id': existing_event['id']
-                            })
-                        else:
-                            results['errors'] += 1
+                    # Check for duplicates using comprehensive comparison
+                    if self._is_duplicate_event(event_data, existing_events):
+                        results['skipped'] += 1
+                        results['details'].append({
+                            'action': 'skipped',
+                            'title': event_title,
+                            'reason': 'Duplicate event already exists in Google Calendar'
+                        })
+                        logger.info(f"Skipping duplicate event: '{event_title}'")
+                        continue
+                    
+                    # Create new event
+                    event_id = self.create_event(event_data)
+                    if event_id:
+                        results['created'] += 1
+                        results['details'].append({
+                            'action': 'created',
+                            'title': event_title,
+                            'id': event_id
+                        })
+                        logger.info(f"Created new event: '{event_title}' (ID: {event_id})")
                     else:
-                        # Create new event
-                        event_id = self.create_event(event_data)
-                        if event_id:
-                            results['created'] += 1
-                            results['details'].append({
-                                'action': 'created',
-                                'title': event_title,
-                                'id': event_id
-                            })
-                        else:
-                            results['errors'] += 1
-                            
+                        results['errors'] += 1
+                        results['details'].append({
+                            'action': 'error',
+                            'title': event_title,
+                            'error': 'Failed to create event'
+                        })
+                        
                 except Exception as e:
                     logger.error(f"Failed to sync event {event_data.get('title', 'Unknown')}: {str(e)}")
                     results['errors'] += 1
@@ -310,21 +346,7 @@ class GoogleCalendarSync:
                         'error': str(e)
                     })
             
-            # Check for events to delete (events in Google Calendar but not in Subsplash)
-            subsplash_titles = {event.get('title', '') for event in events}
-            for title, existing_event in existing_event_map.items():
-                if title not in subsplash_titles:
-                    if self.delete_event(existing_event['id']):
-                        results['deleted'] += 1
-                        results['details'].append({
-                            'action': 'deleted',
-                            'title': title,
-                            'id': existing_event['id']
-                        })
-                    else:
-                        results['errors'] += 1
-            
-            logger.info(f"Calendar sync completed: {results['created']} created, {results['updated']} updated, {results['deleted']} deleted, {results['errors']} errors")
+            logger.info(f"Calendar sync completed: {results['created']} created, {results['skipped']} skipped as duplicates, {results['errors']} errors")
             return results
             
         except Exception as e:
@@ -338,39 +360,71 @@ class GoogleCalendarSync:
             title = event_data.get('title', 'Untitled Event')
             description = event_data.get('description', '')
             location = event_data.get('location', '')
-            start_datetime = event_data.get('datetime')
+            
+            # Handle new format with start/end datetime objects
+            start_datetime = event_data.get('start') or event_data.get('datetime')
+            end_datetime = event_data.get('end')
             
             if not start_datetime:
-                raise ValueError("Event must have a datetime")
+                raise ValueError("Event must have a start datetime")
             
-            # Convert to Google Calendar format
+            # Convert start datetime to proper format
             if isinstance(start_datetime, str):
                 start_datetime = datetime.fromisoformat(start_datetime.replace('Z', '+00:00'))
             
-            # Set end time to 1 hour after start if not specified
-            end_datetime = start_datetime + timedelta(hours=1)
+            # Handle end datetime
+            if end_datetime:
+                if isinstance(end_datetime, str):
+                    end_datetime = datetime.fromisoformat(end_datetime.replace('Z', '+00:00'))
+            else:
+                # Set end time to 1 hour after start if not specified
+                end_datetime = start_datetime + timedelta(hours=1)
+            
+            # Check if this is an all-day event (no specific time component)
+            is_all_day = (start_datetime.hour == 0 and start_datetime.minute == 0 and 
+                         end_datetime.hour == 0 and end_datetime.minute == 0 and
+                         (end_datetime - start_datetime) >= timedelta(hours=23))
             
             # Format for Google Calendar
-            event = {
-                'summary': title,
-                'description': description,
-                'location': location,
-                'start': {
-                    'dateTime': start_datetime.isoformat(),
-                    'timeZone': 'UTC',
-                },
-                'end': {
-                    'dateTime': end_datetime.isoformat(),
-                    'timeZone': 'UTC',
-                },
-                'reminders': {
-                    'useDefault': False,
-                    'overrides': [
-                        {'method': 'email', 'minutes': 24 * 60},
-                        {'method': 'popup', 'minutes': 30},
-                    ],
-                },
-            }
+            if is_all_day:
+                event = {
+                    'summary': title,
+                    'description': description,
+                    'location': location,
+                    'start': {
+                        'date': start_datetime.date().isoformat(),
+                    },
+                    'end': {
+                        'date': end_datetime.date().isoformat(),
+                    },
+                    'reminders': {
+                        'useDefault': False,
+                        'overrides': [
+                            {'method': 'email', 'minutes': 24 * 60},
+                        ],
+                    },
+                }
+            else:
+                event = {
+                    'summary': title,
+                    'description': description,
+                    'location': location,
+                    'start': {
+                        'dateTime': start_datetime.isoformat(),
+                        'timeZone': 'America/New_York',  # Adjust timezone as needed
+                    },
+                    'end': {
+                        'dateTime': end_datetime.isoformat(),
+                        'timeZone': 'America/New_York',  # Adjust timezone as needed
+                    },
+                    'reminders': {
+                        'useDefault': False,
+                        'overrides': [
+                            {'method': 'email', 'minutes': 24 * 60},
+                            {'method': 'popup', 'minutes': 30},
+                        ],
+                    },
+                }
             
             return event
             
@@ -416,6 +470,90 @@ class GoogleCalendarSync:
         except Exception as e:
             logger.error(f"Failed to format event for view: {str(e)}")
             return None
+    
+    def _is_duplicate_event(self, new_event: Dict, existing_events: List[Dict]) -> bool:
+        """
+        Enhanced duplicate detection that handles various edge cases including all-day events
+        
+        Args:
+            new_event: New event to check
+            existing_events: List of existing Google Calendar events
+            
+        Returns:
+            True if the event is a duplicate, False otherwise
+        """
+        try:
+            # Get new event details
+            new_title = new_event.get('title', '').strip().lower()
+            new_start = new_event.get('start')
+            new_end = new_event.get('end')
+            
+            if not new_title or not new_start:
+                return False
+            
+            # Convert new event start time to datetime if it's a string
+            if isinstance(new_start, str):
+                try:
+                    new_start_dt = datetime.fromisoformat(new_start.replace('Z', '+00:00'))
+                except ValueError:
+                    # Try parsing without timezone info
+                    new_start_dt = datetime.fromisoformat(new_start.split('+')[0].split('Z')[0])
+            elif hasattr(new_start, 'date'):
+                new_start_dt = new_start
+            else:
+                return False
+            
+            # Check against existing events
+            for existing_event in existing_events:
+                existing_title = existing_event.get('summary', '').strip().lower()
+                
+                # Skip if titles don't match
+                if new_title != existing_title:
+                    continue
+                
+                # Get existing event start and end times
+                existing_start = existing_event.get('start', {})
+                existing_end = existing_event.get('end', {})
+                
+                existing_start_time = existing_start.get('dateTime') or existing_start.get('date')
+                existing_end_time = existing_end.get('dateTime') or existing_end.get('date')
+                
+                if not existing_start_time:
+                    continue
+                
+                try:
+                    # Parse existing event start time
+                    if 'T' in existing_start_time:
+                        # Regular event with time
+                        existing_start_dt = datetime.fromisoformat(existing_start_time.replace('Z', '+00:00'))
+                        
+                        # Check if this is a regular event (not all-day)
+                        if not new_event.get('all_day', False):
+                            # Compare times with 5-minute tolerance for slight variations
+                            start_diff = abs((new_start_dt - existing_start_dt).total_seconds())
+                            if start_diff < 300:  # 5 minutes tolerance
+                                logger.info(f"Duplicate event found: '{new_title}' on {new_start_dt.strftime('%Y-%m-%d %H:%M')}")
+                                return True
+                    else:
+                        # All-day event
+                        existing_start_date = datetime.fromisoformat(existing_start_time).date()
+                        
+                        # Check if new event is also all-day
+                        if new_event.get('all_day', False):
+                            new_start_date = new_start_dt.date()
+                            if new_start_date == existing_start_date:
+                                logger.info(f"Duplicate all-day event found: '{new_title}' on {new_start_date}")
+                                return True
+                        
+                except ValueError:
+                    # Skip if we can't parse the existing event time
+                    continue
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking for duplicate event: {str(e)}")
+            return False
     
     def get_calendar_info(self) -> Dict:
         """Get information about the Google Calendar"""

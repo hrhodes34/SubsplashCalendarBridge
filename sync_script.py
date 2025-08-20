@@ -25,6 +25,16 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Loaded environment variables from .env file")
+except ImportError:
+    print("⚠️ python-dotenv not installed, using system environment variables only")
+except Exception as e:
+    print(f"⚠️ Could not load .env file: {str(e)}")
+
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 GOOGLE_CALENDAR_ID = os.environ.get('GOOGLE_CALENDAR_ID')
@@ -41,10 +51,92 @@ BROWSER_WAIT_TIME = int(os.environ.get('BROWSER_WAIT_TIME', '10' if os.environ.g
 DEBUG_MODE = os.environ.get('DEBUG_MODE', 'false').lower() == 'true'
 SAVE_DEBUG_FILES = os.environ.get('SAVE_DEBUG_FILES', 'false').lower() == 'true'
 
+# Multi-Calendar Configuration
+# This dictionary acts as the master list of calendars and their configurations
+# Each calendar entry contains:
+# - name: Display name for the calendar
+# - subsplash_url: The specific Subsplash calendar URL to scrape
+# - google_calendar_id: The Google Calendar ID to sync events to
+# - enabled: Whether this calendar is currently active for syncing
+# - color: Optional color for the calendar (useful for FullCalendar display)
+CALENDAR_CONFIG = {
+    'bam': {
+        'name': 'BAM',
+        'subsplash_url': 'https://antiochboone.com/calendar-bam',
+        'google_calendar_id': os.environ.get('BAM_CALENDAR_ID', 'b878d99dde022f1b50ebeed8cef2b7ecc77e8b6a14cce053bad48555cd697c83@group.calendar.google.com'),
+        'enabled': True,
+        'color': '#4285f4'  # Google Blue
+    },
+    'kids': {
+        'name': 'Kingdom Kids',
+        'subsplash_url': 'https://antiochboone.com/calendar-kids',
+        'google_calendar_id': os.environ.get('KIDS_CALENDAR_ID', '0e9e96ae1d378d0dd02c64333f739a6e4d0ead95ac98b628aab40760032da22c@group.calendar.google.com'),
+        'enabled': True,
+        'color': '#34a853'  # Google Green
+    },
+    'prayer': {
+        'name': 'Prayer',
+        'subsplash_url': 'https://antiochboone.com/calendar-prayer',
+        'google_calendar_id': os.environ.get('PRAYER_CALENDAR_ID', 'd0693ad125baad968b86ad667c97943bc3fc6f84cf283186107b9ef3ff5e07a9@group.calendar.google.com'),
+        'enabled': True,
+        'color': '#ea4335'  # Google Red
+    }
+}
+
+# Helper function to get enabled calendars
+def get_enabled_calendars():
+    """Returns a dictionary of only enabled calendars"""
+    return {k: v for k, v in CALENDAR_CONFIG.items() if v['enabled']}
+
+# Helper function to get calendar by name
+def get_calendar_by_name(calendar_name):
+    """Returns calendar config by name, or None if not found"""
+    return CALENDAR_CONFIG.get(calendar_name)
+
+def export_calendar_config_for_frontend():
+    """Export calendar configuration for frontend/FullCalendar integration"""
+    frontend_config = {}
+    
+    for calendar_key, calendar_config in CALENDAR_CONFIG.items():
+        if calendar_config['enabled']:
+            frontend_config[calendar_key] = {
+                'name': calendar_config['name'],
+                'color': calendar_config['color'],
+                'enabled': calendar_config['enabled']
+            }
+    
+    return frontend_config
+
+def get_calendar_urls():
+    """Get all calendar URLs for frontend display"""
+    urls = {}
+    for calendar_key, calendar_config in CALENDAR_CONFIG.items():
+        if calendar_config['enabled']:
+            urls[calendar_key] = {
+                'name': calendar_config['name'],
+                'url': calendar_config['subsplash_url'],
+                'color': calendar_config['color']
+            }
+    return urls
+
 class SubsplashSyncService:
-    def __init__(self):
+    def __init__(self, target_calendar=None):
         self.calendar_service = None
         self.credentials = None
+        # If no specific calendar is specified, use the first enabled one
+        if target_calendar is None:
+            enabled_calendars = get_enabled_calendars()
+            if enabled_calendars:
+                first_calendar = next(iter(enabled_calendars.values()))
+                self.target_calendar = first_calendar
+            else:
+                raise ValueError("No enabled calendars found in configuration")
+        else:
+            self.target_calendar = target_calendar
+        
+        print(f"🎯 Initializing sync service for: {self.target_calendar['name']}")
+        print(f"📍 Target URL: {self.target_calendar['subsplash_url']}")
+        print(f"📅 Google Calendar ID: {self.target_calendar['google_calendar_id']}")
         
     def authenticate_google(self):
         """Authenticate with Google Calendar API using Service Account"""
@@ -74,10 +166,10 @@ class SubsplashSyncService:
         Scrape real events from Subsplash calendar with improved thoroughness
         """
         try:
-            print("🔍 Scraping Subsplash events with enhanced discovery...")
+            print(f"🔍 Scraping Subsplash events for {self.target_calendar['name']} with enhanced discovery...")
             
-            # Subsplash embed URL from your calendar
-            subsplash_url = "https://subsplash.com/+wrmm/lb/ca/+pysr4r6?embed"
+            # Use the target calendar's Subsplash URL
+            subsplash_url = self.target_calendar['subsplash_url']
             
             # Try different URL variations to get more events
             url_variations = [
@@ -1684,7 +1776,7 @@ class SubsplashSyncService:
         """Get existing events from Google Calendar"""
         try:
             events_result = self.calendar_service.events().list(
-                calendarId=GOOGLE_CALENDAR_ID,
+                calendarId=self.target_calendar['google_calendar_id'],
                 timeMin=start_date.isoformat() + 'Z',
                 timeMax=end_date.isoformat() + 'Z',
                 singleEvents=True,
@@ -1699,33 +1791,195 @@ class SubsplashSyncService:
             print(f"❌ Error getting existing Google Calendar events: {str(e)}")
             return []
     
+    def _create_event_key(self, event_data):
+        """
+        Create a unique key for an event based on title, date, and time
+        Handles both regular events and all-day events with robust time handling
+        """
+        try:
+            title = event_data.get('title', '').strip().lower()
+            start = event_data.get('start')
+            
+            if not title or not start:
+                return None
+            
+            # Handle all-day events
+            if event_data.get('all_day', False):
+                # For all-day events, use date only (no time)
+                if hasattr(start, 'date'):
+                    date_str = start.date().isoformat()
+                else:
+                    date_str = start.isoformat().split('T')[0]
+                return f"{title}_{date_str}_allday"
+            else:
+                # For regular events, use date and time (rounded to nearest 5 minutes)
+                if hasattr(start, 'timestamp'):
+                    # Round to nearest 5 minutes to handle slight time variations
+                    timestamp = start.timestamp()
+                    rounded_timestamp = round(timestamp / 300) * 300  # 300 seconds = 5 minutes
+                    rounded_dt = datetime.fromtimestamp(rounded_timestamp)
+                    return f"{title}_{rounded_dt.strftime('%Y%m%d_%H%M')}"
+                else:
+                    # Fallback to original logic
+                    return f"{title}_{start.strftime('%Y%m%d_%H%M')}"
+                    
+        except Exception as e:
+            print(f"⚠️ Error creating event key: {str(e)}")
+            return None
+    
+    def _is_duplicate_event(self, new_event, existing_events):
+        """
+        Enhanced duplicate detection that handles various edge cases including all-day events
+        and provides detailed logging for debugging
+        """
+        try:
+            new_title = new_event.get('title', '').strip().lower()
+            new_start = new_event.get('start')
+            new_end = new_event.get('end')
+            
+            if not new_title or not new_start:
+                return False
+            
+            # Convert new event times to datetime objects if they're strings
+            if isinstance(new_start, str):
+                try:
+                    new_start_dt = datetime.fromisoformat(new_start.replace('Z', '+00:00'))
+                except ValueError:
+                    new_start_dt = datetime.fromisoformat(new_start.split('+')[0].split('Z')[0])
+            else:
+                new_start_dt = new_start
+            
+            if new_end and isinstance(new_end, str):
+                try:
+                    new_end_dt = datetime.fromisoformat(new_end.replace('Z', '+00:00'))
+                except ValueError:
+                    new_end_dt = datetime.fromisoformat(new_end.split('+')[0].split('Z')[0])
+            else:
+                new_end_dt = new_end
+            
+            print(f"🔍 Checking for duplicates: '{new_title}' on {new_start_dt.strftime('%Y-%m-%d %H:%M')} (all_day: {new_event.get('all_day', False)})")
+            
+            # Check against existing events
+            for existing_event in existing_events:
+                existing_title = existing_event.get('summary', '').strip().lower()
+                
+                # Skip if titles don't match
+                if new_title != existing_title:
+                    continue
+                
+                # Get existing event start and end times
+                existing_start = existing_event.get('start', {})
+                existing_end = existing_event.get('end', {})
+                
+                existing_start_time = existing_start.get('dateTime') or existing_start.get('date')
+                existing_end_time = existing_end.get('dateTime') or existing_end.get('date')
+                
+                if not existing_start_time:
+                    continue
+                
+                try:
+                    # Parse existing event start time
+                    if 'T' in existing_start_time:
+                        # Regular event with time
+                        existing_start_dt = datetime.fromisoformat(existing_start_time.replace('Z', '+00:00'))
+                        
+                        # Check if this is a regular event (not all-day)
+                        if not new_event.get('all_day', False):
+                            # Compare times with 5-minute tolerance
+                            start_diff = abs((new_start_dt - existing_start_dt).total_seconds())
+                            if start_diff <= 300:  # 5 minutes tolerance (inclusive)
+                                print(f"🔄 Duplicate event found: '{new_title}' on {new_start_dt.strftime('%Y-%m-%d %H:%M')} (diff: {start_diff/60:.1f} min)")
+                                return True
+                            else:
+                                print(f"  ⏰ Time difference: {start_diff/60:.1f} minutes (within tolerance)")
+                    else:
+                        # All-day event
+                        existing_start_date = datetime.fromisoformat(existing_start_time).date()
+                        
+                        # Check if new event is also all-day
+                        if new_event.get('all_day', False):
+                            new_start_date = new_start_dt.date()
+                            if new_start_date == existing_start_date:
+                                print(f"🔄 Duplicate all-day event found: '{new_title}' on {new_start_date}")
+                                return True
+                            else:
+                                print(f"  📅 Date difference: {new_start_date} vs {existing_start_date}")
+                        else:
+                            print(f"  ⚠️ Type mismatch: new event is regular, existing is all-day")
+                
+                except (ValueError, TypeError) as e:
+                    # Skip if we can't parse the existing event time
+                    print(f"  ⚠️ Could not parse existing event time: {existing_start_time}")
+                    continue
+            
+            print(f"✅ No duplicates found for '{new_title}'")
+            return False
+            
+        except Exception as e:
+            print(f"⚠️ Error in duplicate detection: {str(e)}")
+            return False
+    
     def sync_to_google_calendar(self, subsplash_events):
-        """Sync Subsplash events to Google Calendar"""
+        """Sync Subsplash events to Google Calendar with enhanced duplicate detection"""
         try:
             if not self.calendar_service:
                 print("❌ Google Calendar service not initialized")
                 return False
             
-            # Get date range for existing events
-            start_date = datetime.now() - timedelta(days=30)
+            # Get date range for existing events (extend range to catch more potential duplicates)
+            start_date = datetime.now() - timedelta(days=60)  # Increased from 30 to 60 days
             end_date = datetime.now() + timedelta(days=365)
             
             existing_events = self.get_existing_google_events(start_date, end_date)
             
-            # Create a map of existing events by title and start time
+            # Create a map of existing events by enhanced key
             existing_event_map = {}
+            print(f"🔍 Creating event map from {len(existing_events)} existing events...")
+            
             for event in existing_events:
-                if 'start' in event and 'dateTime' in event['start']:
-                    start_time = datetime.fromisoformat(event['start']['dateTime'].replace('Z', '+00:00'))
-                    key = f"{event['summary']}_{start_time.strftime('%Y%m%d_%H%M')}"
-                    existing_event_map[key] = event
+                # Create a key for the existing event
+                existing_title = event.get('summary', '').strip().lower()
+                existing_start = event.get('start', {})
+                existing_start_time = existing_start.get('dateTime') or existing_start.get('date')
+                
+                if existing_start_time:
+                    try:
+                        if 'T' in existing_start_time:
+                            # Regular event
+                            start_dt = datetime.fromisoformat(existing_start_time.replace('Z', '+00:00'))
+                            # Round to nearest 5 minutes
+                            timestamp = start_dt.timestamp()
+                            rounded_timestamp = round(timestamp / 300) * 300
+                            rounded_dt = datetime.fromtimestamp(rounded_timestamp)
+                            key = f"{existing_title}_{rounded_dt.strftime('%Y%m%d_%H%M')}"
+                            print(f"  📅 Regular event: '{existing_title}' -> {key}")
+                        else:
+                            # All-day event
+                            start_date = datetime.fromisoformat(existing_start_time).date()
+                            key = f"{existing_title}_{start_date.isoformat()}_allday"
+                            print(f"  📅 All-day event: '{existing_title}' -> {key}")
+                        
+                        existing_event_map[key] = event
+                    except (ValueError, TypeError) as e:
+                        print(f"  ⚠️ Could not create key for event '{existing_title}': {str(e)}")
+                        continue
+            
+            print(f"✅ Created event map with {len(existing_event_map)} keys")
             
             synced_count = 0
             updated_count = 0
+            skipped_count = 0
             
             for event_data in subsplash_events:
+                # Enhanced duplicate detection
+                if self._is_duplicate_event(event_data, existing_events):
+                    skipped_count += 1
+                    print(f"⏭️ Skipping duplicate event: {event_data['title']}")
+                    continue
+                
                 # Create event key for comparison
-                event_key = f"{event_data['title']}_{event_data['start'].strftime('%Y%m%d_%H%M')}"
+                event_key = self._create_event_key(event_data)
+                print(f"🔑 Event key for '{event_data['title']}': {event_key}")
                 
                 # Prepare event for Google Calendar
                 google_event = {
@@ -1746,13 +2000,13 @@ class SubsplashSyncService:
                     google_event['start'] = {'date': event_data['start'].date().isoformat()}
                     google_event['end'] = {'date': event_data['end'].date().isoformat()}
                 
-                # Check if event already exists
-                if event_key in existing_event_map:
+                # Check if event already exists using enhanced key
+                if event_key and event_key in existing_event_map:
                     # Update existing event
                     existing_event = existing_event_map[event_key]
                     try:
                         self.calendar_service.events().update(
-                            calendarId=GOOGLE_CALENDAR_ID,
+                            calendarId=self.target_calendar['google_calendar_id'],
                             eventId=existing_event['id'],
                             body=google_event
                         ).execute()
@@ -1764,7 +2018,7 @@ class SubsplashSyncService:
                     # Create new event
                     try:
                         self.calendar_service.events().insert(
-                            calendarId=GOOGLE_CALENDAR_ID,
+                            calendarId=self.target_calendar['google_calendar_id'],
                             body=google_event
                         ).execute()
                         synced_count += 1
@@ -1775,7 +2029,7 @@ class SubsplashSyncService:
                 # Small delay to avoid rate limiting
                 time.sleep(0.1)
             
-            print(f"🎯 Sync complete: {synced_count} new events, {updated_count} updated events")
+            print(f"🎯 Sync complete: {synced_count} new events, {updated_count} updated events, {skipped_count} skipped as duplicates")
             return True
             
         except Exception as e:
@@ -1791,8 +2045,9 @@ class SubsplashSyncService:
                     'last_sync': datetime.now().isoformat(),
                     'success': success,
                     'message': message,
-                    'calendar_id': GOOGLE_CALENDAR_ID,
-                    'subsplash_url': SUBSPLASH_EMBED_URL
+                    'calendar_name': self.target_calendar['name'],
+                    'calendar_id': self.target_calendar['google_calendar_id'],
+                    'subsplash_url': self.target_calendar['subsplash_url']
                 }
                 
                 with open('sync_status.json', 'w') as f:
@@ -1809,9 +2064,10 @@ class SubsplashSyncService:
     
     def run_sync(self):
         """Main sync method"""
-        print("�� Starting Subsplash to Google Calendar sync...")
-        print(f"�� Target Calendar ID: {GOOGLE_CALENDAR_ID}")
-        print(f"🔗 Subsplash URL: {SUBSPLASH_EMBED_URL}")
+        print("🔄 Starting Subsplash to Google Calendar sync...")
+        print(f"📅 Target Calendar: {self.target_calendar['name']}")
+        print(f"📅 Target Calendar ID: {self.target_calendar['google_calendar_id']}")
+        print(f"🔗 Subsplash URL: {self.target_calendar['subsplash_url']}")
         
         # Authenticate with Google
         if not self.authenticate_google():
@@ -1826,7 +2082,7 @@ class SubsplashSyncService:
         
         # Sync to Google Calendar
         if self.sync_to_google_calendar(subsplash_events):
-            self.save_status(True, f"Successfully synced {len(subsplash_events)} events")
+            self.save_status(True, f"Successfully synced {len(subsplash_events)} events to {self.target_calendar['name']}")
             return True
         else:
             self.save_status(False, "Sync to Google Calendar failed")
@@ -2497,7 +2753,17 @@ class SubsplashSyncService:
             
             try:
                 print("  🌐 Navigating to calendar page...")
-                driver.get("https://antiochboone.com/calendar")
+                # Use the target calendar's specific Subsplash URL instead of hardcoded main calendar
+                target_url = self.target_calendar['subsplash_url']
+                
+                # Add parameters to ensure we get events from current date forward
+                if '?' in target_url:
+                    target_url += '&start_date=today&include_future=1'
+                else:
+                    target_url += '?start_date=today&include_future=1'
+                
+                print(f"  📍 Using target calendar URL: {target_url}")
+                driver.get(target_url)
                 
                 # Wait for page to load with different strategies
                 if is_github_actions:
@@ -2535,6 +2801,14 @@ class SubsplashSyncService:
                 loop_detection_threshold = 3  # If we see the same month 3 times, we're in a loop
                 
                 print(f"  📊 Configuration: Max months={max_months_to_check}, Max empty={max_consecutive_empty}, Max nav failures={max_navigation_failures}")
+                
+                # Try to navigate to current month first
+                print("  🔍 Attempting to navigate to current month...")
+                current_month_success = self._navigate_to_current_month(driver)
+                if current_month_success:
+                    print("  ✅ Successfully navigated to current month")
+                else:
+                    print("  ⚠️ Could not navigate to current month, starting from loaded month")
                 
                 for month_count in range(max_months_to_check):
                     try:
@@ -2624,6 +2898,57 @@ class SubsplashSyncService:
             traceback.print_exc()
         
         return events
+    
+    def _navigate_to_current_month(self, driver):
+        """Navigate to the current month (August 2024) if possible"""
+        try:
+            print("  🔍 Attempting to navigate to current month...")
+            
+            # Get current date
+            from datetime import datetime
+            current_date = datetime.now()
+            current_month_year = current_date.strftime("%B %Y")
+            print(f"  📅 Current month should be: {current_month_year}")
+            
+            # Get the current month displayed on the calendar
+            try:
+                displayed_month = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                print(f"  📅 Currently displaying: {displayed_month}")
+                
+                # If we're already on the current month, great!
+                if displayed_month == current_month_year:
+                    print("  ✅ Already on current month!")
+                    return True
+                
+                # Try to find a "Today" button or current month button
+                try:
+                    today_button = driver.find_element(By.CSS_SELECTOR, "button.fc-today-button")
+                    print("  🔍 Found 'Today' button, clicking it...")
+                    driver.execute_script("arguments[0].click();", today_button)
+                    time.sleep(2)
+                    
+                    # Check if we're now on the current month
+                    new_month = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                    if new_month == current_month_year:
+                        print("  ✅ Successfully navigated to current month using 'Today' button!")
+                        return True
+                    else:
+                        print(f"  ⚠️ 'Today' button took us to: {new_month}")
+                        
+                except:
+                    print("  ⚠️ No 'Today' button found")
+                
+                # If we can't navigate to current month, that's okay
+                print("  ℹ️ Will start scraping from current displayed month")
+                return False
+                
+            except Exception as e:
+                print(f"  ⚠️ Could not determine current month: {str(e)}")
+                return False
+                
+        except Exception as e:
+            print(f"  ⚠️ Error in current month navigation: {str(e)}")
+            return False
     
     def _navigate_to_next_month(self, driver, current_month_year, is_github_actions):
         """Navigate to the next month with multiple strategies and verification"""
@@ -2724,11 +3049,8 @@ class SubsplashSyncService:
         events = []
         
         try:
-            # Get the page source and parse with BeautifulSoup
-            page_source = driver.page_source
-            soup = BeautifulSoup(page_source, 'html.parser')
-            
-            # Look for event elements on the page
+            # Use Selenium directly instead of BeautifulSoup for better element handling
+            # Look for event elements on the page using Selenium
             event_selectors = [
                 'div[class*="event"]',
                 'div[class*="calendar-event"]',
@@ -2741,7 +3063,7 @@ class SubsplashSyncService:
             
             for selector in event_selectors:
                 try:
-                    event_elements = soup.select(selector)
+                    event_elements = driver.find_elements(By.CSS_SELECTOR, selector)
                     if event_elements:
                         print(f"    🔍 Found {len(event_elements)} event elements with selector: {selector}")
                         
@@ -2766,15 +3088,34 @@ class SubsplashSyncService:
         """Extract event information from a browser element"""
         try:
             # Get the element text
-            event_text = element.get_text(strip=True)
+            event_text = element.text.strip()
             if not event_text or len(event_text) < 5:
                 return None
             
             # Try to extract date information from the element or its context
             event_date = self._extract_event_date_from_element(element, driver)
             
-            if not event_date:
+            if event_date:
+                print(f"        🎯 Extracted date: {event_date} for event: {event_text[:50]}...")
+            else:
                 print(f"      ⚠️ No date found for event: {event_text[:50]}...")
+                # Debug: let's see what the element structure looks like
+                try:
+                    print(f"        🔍 Element classes: {element.get_attribute('class')}")
+                    print(f"        🔍 Element tag: {element.tag_name}")
+                    # Look for any parent elements with date info
+                    parent = element
+                    for i in range(3):
+                        try:
+                            parent = parent.find_element(By.XPATH, "..")
+                            parent_classes = parent.get_attribute('class') or ''
+                            parent_text = parent.text.strip()[:100]
+                            print(f"        🔍 Parent {i+1} classes: {parent_classes}")
+                            print(f"        🔍 Parent {i+1} text: {parent_text}")
+                        except:
+                            break
+                except Exception as debug_e:
+                    print(f"        🔍 Debug error: {str(debug_e)}")
                 return None
             
             # Try to parse the event text
@@ -2864,43 +3205,133 @@ class SubsplashSyncService:
     def _extract_event_date_from_element(self, element, driver):
         """Extract the actual event date from the element or its context"""
         try:
-            # Method 1: Look for date attributes
+            # Method 1: Look for date attributes on the event element itself
             date_attrs = ['data-date', 'data-event-date', 'title', 'aria-label']
             for attr in date_attrs:
-                date_value = element.get(attr)
-                if date_value:
-                    # Try to parse the date
-                    parsed_date = self._parse_date_string(date_value)
-                    if parsed_date:
-                        return parsed_date
+                try:
+                    date_value = element.get_attribute(attr)
+                    if date_value:
+                        # Try to parse the date
+                        parsed_date = self._parse_date_string(date_value)
+                        if parsed_date:
+                            return parsed_date
+                except:
+                    continue
             
-            # Method 2: Look for parent elements with date information
-            parent = element.parent
-            for _ in range(3):  # Check up to 3 levels up
-                if parent:
-                    # Look for date-related classes or attributes
-                    if parent.get('class'):
-                        for class_name in parent.get('class'):
-                            if 'date' in class_name.lower() or 'day' in class_name.lower():
-                                date_text = parent.get_text(strip=True)
+            # Method 2: Look for the specific day in the calendar grid
+            # Find the calendar day element that contains this event
+            try:
+                # Look for the parent calendar day element
+                calendar_day = element
+                for _ in range(10):  # Check up to 10 levels up to find the calendar day
+                    if calendar_day:
+                        try:
+                            # Check if this is a calendar day element
+                            classes = calendar_day.get_attribute('class') or ''
+                            if 'fc-day' in classes.lower():
+                                # Found a calendar day element, extract the date
+                                day_date = calendar_day.get_attribute('data-date')
+                                if day_date:
+                                    # data-date is usually in YYYY-MM-DD format
+                                    try:
+                                        year, month, day = map(int, day_date.split('-'))
+                                        print(f"        🎯 Found calendar day with data-date: {day_date} -> {year}-{month}-{day}")
+                                        return datetime(year, month, day)
+                                    except Exception as parse_e:
+                                        print(f"        ⚠️ Error parsing data-date '{day_date}': {str(parse_e)}")
+                                
+                                # Alternative: look for aria-label with date
+                                aria_label = calendar_day.get_attribute('aria-label')
+                                if aria_label:
+                                    parsed_date = self._parse_date_string(aria_label)
+                                    if parsed_date:
+                                        print(f"        🎯 Found calendar day with aria-label: {aria_label}")
+                                        return parsed_date
+                                
+                                # Alternative: look for text content that might contain the day
+                                day_text = calendar_day.text.strip()
+                                if day_text:
+                                    # Look for just a day number (1-31)
+                                    day_match = re.search(r'\b(\d{1,2})\b', day_text)
+                                    if day_match:
+                                        day = int(day_match.group(1))
+                                        # Get month/year from calendar header
+                                        month_year = self._get_current_month_year(driver)
+                                        if month_year:
+                                            year, month = month_year
+                                            print(f"        🎯 Found calendar day with day number: {day} from month/year: {year}-{month}")
+                                            return datetime(year, month, day)
+                                break
+                            else:
+                                # Debug: show what we're looking at
+                                if 'fc-' in classes.lower():
+                                    print(f"        🔍 Found FullCalendar element (not day): {classes}")
+                        except Exception as level_e:
+                            print(f"        ⚠️ Error at level {_}: {str(level_e)}")
+                        
+                        # Move up to parent element
+                        try:
+                            calendar_day = calendar_day.find_element(By.XPATH, "..")
+                        except:
+                            break
+            except Exception as e:
+                print(f"        ⚠️ Error looking for calendar day: {str(e)}")
+            
+            # Method 3: Look for parent elements with date information
+            try:
+                parent = element.find_element(By.XPATH, "..")
+                for _ in range(3):  # Check up to 3 levels up
+                    if parent:
+                        try:
+                            # Look for date-related classes or attributes
+                            classes = parent.get_attribute('class') or ''
+                            if 'date' in classes.lower() or 'day' in classes.lower():
+                                date_text = parent.text.strip()
                                 parsed_date = self._parse_date_string(date_text)
                                 if parsed_date:
                                     return parsed_date
-                    parent = parent.parent
+                        except:
+                            pass
+                        
+                        # Move up to parent element
+                        try:
+                            parent = parent.find_element(By.XPATH, "..")
+                        except:
+                            break
+            except Exception as e:
+                print(f"        ⚠️ Error looking for parent elements: {str(e)}")
             
-            # Method 3: Look for the current month/year from the calendar header
+            # Method 4: Look for the current month/year from the calendar header
+            # Only use this as a last resort, and don't default to day 1
             try:
-                month_year_text = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
-                # Extract month and year from the header
-                parsed_date = self._parse_month_year_string(month_year_text)
-                if parsed_date:
-                    return parsed_date
+                month_year = self._get_current_month_year(driver)
+                if month_year:
+                    year, month = month_year
+                    # Instead of defaulting to day 1, return None so we can handle this case
+                    # in the calling method
+                    return None
             except:
                 pass
             
         except Exception as e:
             print(f"        ⚠️ Error extracting date from element: {str(e)}")
         
+        return None
+    
+    def _get_current_month_year(self, driver):
+        """Get the current month and year from the calendar header"""
+        try:
+            month_year_text = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+            # Extract month and year from the header
+            pattern = r'(\w+)\s+(\d{4})'
+            match = re.search(pattern, month_year_text)
+            if match:
+                month_str, year = match.groups()
+                month = self._month_name_to_number(month_str)
+                if month:
+                    return int(year), month
+        except Exception as e:
+            print(f"        ⚠️ Error getting month/year from header: {str(e)}")
         return None
     
     def _parse_date_string(self, date_string):
@@ -2962,8 +3393,10 @@ class SubsplashSyncService:
                 month_str, year = match.groups()
                 month = self._month_name_to_number(month_str)
                 if month:
-                    # Return first day of the month
-                    return datetime(int(year), month, 1)
+                    # Don't default to day 1 - this causes all events to stack on the 1st
+                    # Instead, return None so the calling method can handle this case properly
+                    print(f"          ⚠️ Found month/year '{month_str} {year}' but no specific day - skipping event")
+                    return None
                     
         except Exception as e:
             print(f"          ⚠️ Error parsing month year string '{month_year_string}': {str(e)}")
@@ -2989,24 +3422,24 @@ class SubsplashSyncService:
         return month_map.get(month_name.lower())
     
     def _is_duplicate_event(self, new_event, existing_events):
-        """Check if an event is a duplicate based on title and date"""
+        """Check if an event is a duplicate based on title and start date"""
         try:
             if not new_event or not existing_events:
                 return False
             
             new_title = new_event.get('title', '').strip().lower()
-            new_date = new_event.get('date')
+            new_start = new_event.get('start')
             
-            if not new_title or not new_date:
+            if not new_title or not new_start:
                 return False
             
             for existing_event in existing_events:
                 existing_title = existing_event.get('title', '').strip().lower()
-                existing_date = existing_event.get('date')
+                existing_start = existing_event.get('start')
                 
                 if (new_title == existing_title and 
-                    new_date and existing_date and 
-                    new_date.date() == existing_date.date()):
+                    new_start and existing_start and 
+                    new_start.date() == existing_start.date()):
                     return True
             
             return False
@@ -3642,21 +4075,60 @@ class SubsplashSyncService:
             return False
 
 def main():
-    """Main function for GitHub Actions"""
-    if not GOOGLE_CALENDAR_ID or not SUBSPLASH_EMBED_URL:
-        print("❌ Missing required environment variables")
-        print(f"GOOGLE_CALENDAR_ID: {GOOGLE_CALENDAR_ID}")
-        print(f"SUBSPLASH_EMBED_URL: {SUBSPLASH_EMBED_URL}")
+    """Main function for GitHub Actions - now supports multiple calendars"""
+    print("🚀 Starting multi-calendar sync process...")
+    
+    # Get enabled calendars
+    enabled_calendars = get_enabled_calendars()
+    if not enabled_calendars:
+        print("❌ No enabled calendars found in configuration")
         exit(1)
     
-    service = SubsplashSyncService()
-    success = service.run_sync()
+    print(f"📅 Found {len(enabled_calendars)} enabled calendars:")
+    for calendar_key, calendar_config in enabled_calendars.items():
+        print(f"   • {calendar_config['name']} ({calendar_key})")
     
-    if success:
-        print("🎉 Sync completed successfully!")
+    # Check if we have the required environment variables for at least one calendar
+    calendars_with_ids = [cal for cal in enabled_calendars.values() if cal['google_calendar_id']]
+    if not calendars_with_ids:
+        print("❌ No calendars have valid Google Calendar IDs configured")
+        print("Please set the appropriate environment variables:")
+        for calendar_key, calendar_config in enabled_calendars.items():
+            env_var = f"{calendar_key.upper()}_CALENDAR_ID"
+            print(f"   {env_var}={calendar_config['google_calendar_id'] or 'your_calendar_id_here'}")
+        exit(1)
+    
+    # Sync each enabled calendar
+    overall_success = True
+    for calendar_key, calendar_config in enabled_calendars.items():
+        if not calendar_config['google_calendar_id']:
+            print(f"⚠️ Skipping {calendar_config['name']} - no Google Calendar ID configured")
+            continue
+            
+        print(f"\n{'='*60}")
+        print(f"🔄 Syncing calendar: {calendar_config['name']}")
+        print(f"{'='*60}")
+        
+        try:
+            service = SubsplashSyncService(calendar_config)
+            success = service.run_sync()
+            
+            if success:
+                print(f"✅ {calendar_config['name']} sync completed successfully!")
+            else:
+                print(f"❌ {calendar_config['name']} sync failed!")
+                overall_success = False
+                
+        except Exception as e:
+            print(f"💥 Error syncing {calendar_config['name']}: {str(e)}")
+            overall_success = False
+    
+    print(f"\n{'='*60}")
+    if overall_success:
+        print("🎉 All calendar syncs completed successfully!")
         exit(0)
     else:
-        print("💥 Sync failed!")
+        print("💥 Some calendar syncs failed!")
         exit(1)
 
 if __name__ == "__main__":
