@@ -2773,23 +2773,93 @@ class SubsplashSyncService:
             # Try to extract date information from the element or its context
             event_date = self._extract_event_date_from_element(element, driver)
             
+            if not event_date:
+                print(f"      ⚠️ No date found for event: {event_text[:50]}...")
+                return None
+            
             # Try to parse the event text
             parsed_event = self._parse_event_text(event_text)
             if parsed_event:
-                # Combine parsed text with extracted date
+                # Create properly formatted event with start/end fields for Google Calendar sync
                 event = {
                     "title": parsed_event.get("title", event_text),
-                    "time": parsed_event.get("time"),
-                    "date": event_date,
+                    "start": event_date,  # Use as start time
+                    "end": event_date + timedelta(hours=1),  # Default 1-hour duration
                     "source": "browser_calendar",
-                    "raw_text": event_text
+                    "raw_text": event_text,
+                    "all_day": False
                 }
+                
+                # If we have time information, use it
+                if parsed_event.get("time"):
+                    time_info = parsed_event.get("time")
+                    # Try to extract start and end times from the time info
+                    start_end_times = self._parse_time_range(time_info)
+                    if start_end_times:
+                        start_time, end_time = start_end_times
+                        # Combine date with time
+                        event["start"] = event_date.replace(hour=start_time.hour, minute=start_time.minute)
+                        event["end"] = event_date.replace(hour=end_time.hour, minute=end_time.minute)
+                        event["all_day"] = False
+                    else:
+                        # Just use the date as is (all-day event)
+                        event["start"] = event_date
+                        event["end"] = event_date + timedelta(days=1)
+                        event["all_day"] = True
+                else:
+                    # No time info, treat as all-day event
+                    event["start"] = event_date
+                    event["end"] = event_date + timedelta(days=1)
+                    event["all_day"] = True
+                
                 return event
             
         except Exception as e:
             print(f"      ⚠️ Error extracting event from browser element: {str(e)}")
         
         return None
+    
+    def _parse_time_range(self, time_text):
+        """Parse time range from text like '6:00 - 8:00pm' or '10:30a - 11:30a'"""
+        try:
+            if not time_text:
+                return None
+            
+            # Pattern for time range: "6:00 - 8:00pm" or "10:30a - 11:30a"
+            time_pattern = r'(\d{1,2}):(\d{2})([ap]m?) - (\d{1,2}):(\d{2})([ap]m?)'
+            match = re.search(time_pattern, time_text)
+            
+            if match:
+                start_hour, start_minute, start_ampm, end_hour, end_minute, end_ampm = match.groups()
+                
+                # Convert start time
+                start_hour = int(start_hour)
+                start_minute = int(start_minute)
+                if start_ampm.lower().startswith('p') and start_hour != 12:
+                    start_hour += 12
+                elif start_ampm.lower().startswith('a') and start_hour == 12:
+                    start_hour = 0
+                
+                # Convert end time
+                end_hour = int(end_hour)
+                end_minute = int(end_minute)
+                if end_ampm.lower().startswith('p') and end_hour != 12:
+                    end_hour += 12
+                elif end_ampm.lower().startswith('a') and end_hour == 12:
+                    end_hour = 0
+                
+                # Create time objects (using a dummy date)
+                dummy_date = datetime(2025, 1, 1)
+                start_time = dummy_date.replace(hour=start_hour, minute=start_minute)
+                end_time = dummy_date.replace(hour=end_hour, minute=end_minute)
+                
+                return start_time, end_time
+            
+            return None
+            
+        except Exception as e:
+            print(f"        ⚠️ Error parsing time range '{time_text}': {str(e)}")
+            return None
     
     def _extract_event_date_from_element(self, element, driver):
         """Extract the actual event date from the element or its context"""
