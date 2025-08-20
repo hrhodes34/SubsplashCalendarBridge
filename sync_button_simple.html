@@ -1,0 +1,159 @@
+<!-- Simple Calendar Sync Button - No Server, Just Instructions -->
+<div style="text-align: center; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; border-radius: 12px; margin: 20px 0; border: 1px solid #e9ecef;">
+    <h3 style="margin: 0 0 15px 0; color: #333;">📅 Calendar Sync</h3>
+    
+    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border: 1px solid #dee2e6; text-align: left;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 15px;">
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="prayer" checked style="margin-right: 8px;"> Prayer Calendar
+            </label>
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="bam" checked style="margin-right: 8px;"> BAM Calendar
+            </label>
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="kids" checked style="margin-right: 8px;"> Kids Calendar
+            </label>
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="college" style="margin-right: 8px;"> College Calendar
+            </label>
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="youth" style="margin-right: 8px;"> Youth Calendar
+            </label>
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="women" style="margin-right: 8px;"> Women's Calendar
+            </label>
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="men" style="margin-right: 8px;"> Men's Calendar
+            </label>
+            <label style="display: flex; align-items: center; font-weight: 500; cursor: pointer;">
+                <input type="checkbox" id="missions" style="margin-right: 8px;"> Missions Calendar
+            </label>
+        </div>
+        
+        <div style="text-align: center;">
+            <label style="font-weight: 500;">
+                Months to check: 
+                <select id="monthsToCheck" style="margin-left: 10px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="3">3 months</option>
+                    <option value="6" selected>6 months</option>
+                    <option value="12">12 months</option>
+                    <option value="24">24 months</option>
+                </select>
+            </label>
+        </div>
+    </div>
+    
+    <button id="syncButton" onclick="prepareSync()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 30px; font-size: 16px; font-weight: 600; border-radius: 50px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.2); position: relative; overflow: hidden;">
+        📥 Download Sync Instructions
+    </button>
+    
+    <div id="status" style="margin-top: 15px; padding: 10px; border-radius: 8px; font-size: 14px; display: none;"></div>
+    
+    <div style="margin-top: 20px; padding: 15px; background: #e7f3ff; border-radius: 8px; border: 1px solid #b3d9ff; text-align: left;">
+        <h4 style="margin: 0 0 10px 0; color: #0056b3;">💡 How to Use:</h4>
+        <ol style="margin: 0; padding-left: 20px; color: #0056b3;">
+            <li>Select which calendars you want to sync</li>
+            <li>Choose how many months to check</li>
+            <li>Click the button above to download instructions</li>
+            <li>Follow the instructions to run the sync locally</li>
+        </ol>
+    </div>
+</div>
+
+<style>
+#syncButton:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+}
+
+#syncButton:active {
+    transform: translateY(0);
+}
+
+.status.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status.info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+</style>
+
+<script>
+// Get selected calendars
+function getSelectedCalendars() {
+    const calendars = [];
+    const checkboxes = ['prayer', 'bam', 'kids', 'college', 'youth', 'women', 'men', 'missions'];
+    
+    checkboxes.forEach(calendarType => {
+        const checkbox = document.getElementById(calendarType);
+        if (checkbox && checkbox.checked) {
+            calendars.push(calendarType);
+        }
+    });
+    
+    return calendars;
+}
+
+// Prepare and download sync instructions
+function prepareSync() {
+    const selectedCalendars = getSelectedCalendars();
+    const monthsToCheck = document.getElementById('monthsToCheck').value;
+
+    if (selectedCalendars.length === 0) {
+        showStatus('Please select at least one calendar to sync.', 'info');
+        return;
+    }
+
+    // Create sync instructions
+    const instructions = {
+        selected_calendars: selectedCalendars,
+        months_to_check: parseInt(monthsToCheck),
+        timestamp: new Date().toISOString(),
+        steps: [
+            "1. Open your terminal/command prompt",
+            "2. Navigate to your SubsplashCalendarBridge folder",
+            "3. Run: python sync_script.py",
+            "4. The script will automatically sync all configured calendars",
+            "5. Check the console output for progress and results"
+        ],
+        notes: [
+            "• Make sure your .env file has all the required Google Calendar IDs",
+            "• Ensure you have the required Python packages installed",
+            "• The script will use the months_to_check setting from your .env file",
+            "• Sync results will be saved to sync_results.json"
+        ]
+    };
+
+    // Download instructions file
+    const blob = new Blob([JSON.stringify(instructions, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sync_instructions.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Show success message
+    showStatus(`✅ Sync instructions downloaded! Selected: ${selectedCalendars.join(', ')} calendars, ${monthsToCheck} months.`, 'success');
+}
+
+// Show status message
+function showStatus(message, type = 'info') {
+    const status = document.getElementById('status');
+    status.textContent = message;
+    status.className = `status ${type}`;
+    status.style.display = 'block';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        status.style.display = 'none';
+    }, 5000);
+}
+</script>

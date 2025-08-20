@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar Sync Button</title>
+    <style>
+        .sync-container {
+            text-align: center;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .sync-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .sync-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        
+        .sync-button:active {
+            transform: translateY(0);
+        }
+        
+        .sync-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .sync-button .spinner {
+            display: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        .sync-button.syncing .spinner {
+            display: inline-block;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .last-sync {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .sync-options {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .sync-options label {
+            display: block;
+            margin: 8px 0;
+            font-weight: 500;
+        }
+        
+        .sync-options input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        
+        .sync-options select {
+            margin-left: 10px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sync-container">
+        <h3>📅 Calendar Sync</h3>
+        
+        <div class="sync-options">
+            <label>
+                <input type="checkbox" id="prayer" checked> Prayer Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="bam" checked> BAM Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="kids" checked> Kids Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="college"> College Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="youth"> Youth Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="women"> Women's Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="men"> Men's Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="missions"> Missions Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="worship"> Worship Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="teaching"> Teaching Calendar
+            </label>
+            <label>
+                <input type="checkbox" id="churchwide"> Churchwide Calendar
+            </label>
+            
+            <div style="margin-top: 15px;">
+                <label>
+                    Months to check: 
+                    <select id="monthsToCheck">
+                        <option value="3">3 months</option>
+                        <option value="6" selected>6 months</option>
+                        <option value="12">12 months</option>
+                        <option value="24">24 months</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+        
+        <button class="sync-button" id="syncButton" onclick="startSync()">
+            <span class="spinner"></span>
+            🔄 Sync Calendars
+        </button>
+        
+        <div class="status" id="status"></div>
+        <div class="last-sync" id="lastSync"></div>
+    </div>
+
+    <script>
+        // Configuration - Update these with your actual calendar IDs
+        const CALENDAR_IDS = {
+            prayer: 'your_prayer_calendar_id_here',
+            bam: 'your_bam_calendar_id_here',
+            kids: 'your_kids_calendar_id_here',
+            college: 'your_college_calendar_id_here',
+            youth: 'your_youth_calendar_id_here',
+            women: 'your_womens_calendar_id_here',
+            men: 'your_mens_calendar_id_here',
+            missions: 'your_missions_calendar_id_here',
+            worship: 'your_worship_calendar_id_here',
+            teaching: 'your_teaching_calendar_id_here',
+            churchwide: 'your_churchwide_calendar_id_here'
+        };
+
+        // Load last sync time from localStorage
+        function loadLastSync() {
+            const lastSync = localStorage.getItem('lastCalendarSync');
+            if (lastSync) {
+                const date = new Date(lastSync);
+                document.getElementById('lastSync').textContent = 
+                    `Last synced: ${date.toLocaleString()}`;
+            }
+        }
+
+        // Save sync time to localStorage
+        function saveLastSync() {
+            localStorage.setItem('lastCalendarSync', new Date().toISOString());
+            loadLastSync();
+        }
+
+        // Show status message
+        function showStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+        }
+
+        // Hide status message
+        function hideStatus() {
+            document.getElementById('status').style.display = 'none';
+        }
+
+        // Get selected calendars
+        function getSelectedCalendars() {
+            const calendars = [];
+            Object.keys(CALENDAR_IDS).forEach(calendarType => {
+                const checkbox = document.getElementById(calendarType);
+                if (checkbox && checkbox.checked && CALENDAR_IDS[calendarType]) {
+                    calendars.push({
+                        type: calendarType,
+                        id: CALENDAR_IDS[calendarType]
+                    });
+                }
+            });
+            return calendars;
+        }
+
+        // Start the sync process
+        async function startSync() {
+            const button = document.getElementById('syncButton');
+            const selectedCalendars = getSelectedCalendars();
+            const monthsToCheck = document.getElementById('monthsToCheck').value;
+
+            if (selectedCalendars.length === 0) {
+                showStatus('Please select at least one calendar to sync.', 'error');
+                return;
+            }
+
+            // Disable button and show loading state
+            button.disabled = true;
+            button.classList.add('syncing');
+            button.textContent = '🔄 Syncing...';
+            hideStatus();
+
+            try {
+                showStatus('Starting calendar sync...', 'info');
+                
+                // This is where you'd make the actual sync call
+                // For now, we'll simulate the process
+                await simulateSync(selectedCalendars, monthsToCheck);
+                
+                showStatus(`✅ Sync completed successfully! Processed ${selectedCalendars.length} calendars.`, 'success');
+                saveLastSync();
+                
+            } catch (error) {
+                showStatus(`❌ Sync failed: ${error.message}`, 'error');
+            } finally {
+                // Re-enable button
+                button.disabled = false;
+                button.classList.remove('syncing');
+                button.innerHTML = '<span class="spinner"></span>🔄 Sync Calendars';
+            }
+        }
+
+        // Simulate the sync process (replace this with actual sync logic)
+        async function simulateSync(calendars, months) {
+            return new Promise((resolve, reject) => {
+                let progress = 0;
+                const totalSteps = calendars.length * 2; // 2 steps per calendar
+                
+                const interval = setInterval(() => {
+                    progress++;
+                    const percentage = Math.round((progress / totalSteps) * 100);
+                    
+                    if (progress <= calendars.length) {
+                        showStatus(`Processing ${calendars[progress - 1].type} calendar... (${percentage}%)`, 'info');
+                    } else {
+                        showStatus(`Syncing ${calendars[progress - calendars.length - 1].type} to Google Calendar... (${percentage}%)`, 'info');
+                    }
+                    
+                    if (progress >= totalSteps) {
+                        clearInterval(interval);
+                        setTimeout(resolve, 1000); // Small delay to show completion
+                    }
+                }, 800);
+            });
+        }
+
+        // Initialize the interface
+        document.addEventListener('DOMContentLoaded', function() {
+            loadLastSync();
+            
+            // Add event listeners for checkboxes
+            Object.keys(CALENDAR_IDS).forEach(calendarType => {
+                const checkbox = document.getElementById(calendarType);
+                if (checkbox) {
+                    checkbox.addEventListener('change', function() {
+                        if (this.checked && !CALENDAR_IDS[calendarType]) {
+                            showStatus(`Warning: No Google Calendar ID configured for ${calendarType}`, 'error');
+                            this.checked = false;
+                        }
+                    });
+                }
+            });
+        });
+
+        // Add keyboard shortcut (Ctrl+Shift+S)
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+                e.preventDefault();
+                startSync();
+            }
+        });
+    </script>
+</body>
+</html>

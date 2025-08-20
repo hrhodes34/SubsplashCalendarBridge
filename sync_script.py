@@ -99,23 +99,61 @@ class SubsplashCalendarSync:
         try:
             chrome_options = Options()
             
-            # Production settings - headless mode
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            # Check if running in GitHub Actions
+            is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
             
-            # Setup Chrome driver
-            service = Service(ChromeDriverManager().install())
+            if is_github_actions:
+                # GitHub Actions: Enhanced headless settings
+                chrome_options.add_argument('--headless')
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--disable-web-security')
+                chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+                chrome_options.add_argument('--window-size=1920,1080')
+                chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+                
+                # Use system Chrome in GitHub Actions
+                service = Service('/usr/bin/google-chrome')
+            else:
+                # Local development: Standard settings
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--window-size=1920,1080')
+                chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+                
+                # Use ChromeDriverManager locally
+                service = Service(ChromeDriverManager().install())
+            
             self.browser = webdriver.Chrome(service=service, options=chrome_options)
             
-            logger.info("Browser setup successful")
+            # Set page load timeout
+            self.browser.set_page_load_timeout(30)
+            self.browser.implicitly_wait(10)
+            
+            logger.info(f"Browser setup successful ({'GitHub Actions' if is_github_actions else 'Local'})")
             return True
             
         except Exception as e:
             logger.error(f"Browser setup failed: {str(e)}")
+            
+            # Additional debugging for GitHub Actions
+            if is_github_actions:
+                logger.error("GitHub Actions debugging info:")
+                try:
+                    import subprocess
+                    result = subprocess.run(['google-chrome', '--version'], capture_output=True, text=True)
+                    logger.error(f"Chrome version: {result.stdout}")
+                except Exception as chrome_error:
+                    logger.error(f"Chrome version check failed: {chrome_error}")
+                
+                try:
+                    result = subprocess.run(['which', 'google-chrome'], capture_output=True, text=True)
+                    logger.error(f"Chrome path: {result.stdout}")
+                except Exception as path_error:
+                    logger.error(f"Chrome path check failed: {path_error}")
+            
             return False
     
     def setup_google_calendar(self) -> bool:
@@ -313,7 +351,8 @@ class SubsplashCalendarSync:
 
         for element in event_elements:
             try:
-                event_data = self._extract_fc_event(element, current_month_year, calendar_type)
+                month, year = current_month_year
+                event_data = self._extract_fc_event(element, month, year, calendar_type)
                 if event_data:
                     events.append(event_data)
                     logger.debug(f"Extracted event: {event_data['title']} on {event_data['date']}")
@@ -351,25 +390,25 @@ class SubsplashCalendarSync:
     def _extract_fc_event(self, event_element, month: str, year: str, calendar_type: str) -> Optional[Dict]:
         """Extract event data from a FullCalendar event element"""
         try:
-            # Get the event title
-            title_element = event_element.find('div', class_='fc-event-title')
-            if not title_element:
+            # Get the event title - use Selenium methods
+            title_elements = event_element.find_elements(By.CSS_SELECTOR, 'div.fc-event-title')
+            if not title_elements:
                 return None
             
-            title = title_element.get_text(strip=True)
+            title = title_elements[0].text.strip()
             if not title:
                 return None
             
-            # Get the event time
-            time_element = event_element.find('div', class_='fc-event-time')
-            time_str = time_element.get_text(strip=True) if time_element else ""
+            # Get the event time - use Selenium methods
+            time_elements = event_element.find_elements(By.CSS_SELECTOR, 'div.fc-event-time')
+            time_str = time_elements[0].text.strip() if time_elements else ""
             
-            # Get the date from the parent day cell
-            date_cell = event_element.find_parent('td', attrs={'data-date': True})
+            # Get the date from the parent day cell - use Selenium methods
+            date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
             if not date_cell:
                 return None
             
-            date_str = date_cell.get('data-date')
+            date_str = date_cell.get_attribute('data-date')
             if not date_str:
                 return None
             
@@ -384,7 +423,7 @@ class SubsplashCalendarSync:
             start_time, end_time = self._parse_fc_time(time_str, event_date)
             
             # Get event URL if available
-            event_url = event_element.get('href', '')
+            event_url = event_element.get_attribute('href') or ''
             
             # Convert relative URLs to absolute URLs for Google Calendar
             if event_url and event_url.startswith('/'):
