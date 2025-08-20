@@ -514,215 +514,49 @@ class SubsplashCalendarSync:
     def _deduplicate_event_elements(self, event_elements) -> List:
         """Deduplicate event elements to prevent multiple copies of the same event"""
         unique_elements = []
-        seen_events = set()
+        seen_titles = set()
         
-        # First pass: collect all event data to understand the structure
-        event_data_list = []
         for element in event_elements:
             try:
-                # Get basic event info for deduplication
-                title_elements = element.find_elements(By.CSS_SELECTOR, 'div.fc-event-title')
-                if not title_elements:
+                # Get the text content directly
+                title = element.text.strip()
+                if not title or len(title) < 3:
                     continue
                 
-                title = title_elements[0].text.strip()
-                if not title:
-                    continue
-                
-                # Get date info
-                date_cell = element.find_element(By.XPATH, './ancestor::td[@data-date]')
-                if not date_cell:
-                    continue
-                
-                date_str = date_cell.get_attribute('data-date')
-                if not date_str:
-                    continue
-                
-                # Get time info
-                time_elements = element.find_elements(By.CSS_SELECTOR, 'div.fc-event-time')
-                time_str = time_elements[0].text.strip() if time_elements else ""
-                
-                # Get element position and attributes for better deduplication
-                try:
-                    location = element.location
-                    size = element.size
-                    element_id = element.get_attribute('id') or ''
-                    element_classes = element.get_attribute('class') or ''
-                except:
-                    location = {'x': 0, 'y': 0}
-                    size = {'width': 0, 'height': 0}
-                    element_id = ''
-                    element_classes = ''
-                
-                # Store element with its data for analysis
-                event_data_list.append({
-                    'element': element,
-                    'title': title,
-                    'date': date_str,
-                    'time': time_str,
-                    'html': element.get_attribute('outerHTML')[:200] if element.get_attribute('outerHTML') else "",
-                    'location': location,
-                    'size': size,
-                    'id': element_id,
-                    'classes': element_classes
-                })
-                
+                # Simple deduplication: if we've seen this title before, skip it
+                if title not in seen_titles:
+                    seen_titles.add(title)
+                    unique_elements.append(element)
+                    logger.debug(f"Added unique event: {title}")
+                else:
+                    logger.debug(f"Skipped duplicate event: {title}")
+                    
             except Exception as e:
                 logger.debug(f"Error during deduplication: {e}")
                 continue
         
-        # Second pass: deduplicate based on content similarity and element properties
-        for event_data in event_data_list:
-            # Create unique key for deduplication
-            event_key = f"{event_data['title']}_{event_data['date']}_{event_data['time']}"
-            
-            # Additional check: if elements have different positions/sizes, they might be truly different
-            # This helps with cases where the same event appears in multiple places on the page
-            is_truly_unique = True
-            
-            if event_key in seen_events:
-                # Check if this might be a different instance (different position, size, or attributes)
-                for existing_data in event_data_list:
-                    if (existing_data['title'] == event_data['title'] and 
-                        existing_data['date'] == event_data['date'] and 
-                        existing_data['time'] == event_data['time']):
-                        
-                        # If positions are very close (within 5 pixels), likely duplicate
-                        if (abs(existing_data['location']['x'] - event_data['location']['x']) < 5 and
-                            abs(existing_data['location']['y'] - event_data['location']['y']) < 5):
-                            is_truly_unique = False
-                            break
-            
-            if event_key not in seen_events or is_truly_unique:
-                seen_events.add(event_key)
-                unique_elements.append(event_data['element'])
-                logger.debug(f"Added unique event: {event_data['title']} on {event_data['date']} at {event_data['time']}")
-            else:
-                logger.debug(f"Skipped duplicate event: {event_data['title']} on {event_data['date']} at {event_data['time']}")
-        
-        # Additional logging for GitHub Actions debugging
-        if os.getenv('GITHUB_ACTIONS') == 'true':
-            logger.info(f"Deduplication summary: {len(event_elements)} total elements -> {len(unique_elements)} unique elements")
-            if len(event_elements) > len(unique_elements):
-                logger.warning(f"Removed {len(event_elements) - len(unique_elements)} duplicate elements")
-                
-                # Log some examples of what was removed
-                duplicate_examples = []
-                for event_data in event_data_list:
-                    event_key = f"{event_data['title']}_{event_data['date']}_{event_data['time']}"
-                    if event_key in seen_events:
-                        duplicate_examples.append(f"{event_data['title']} on {event_data['date']} at {event_data['time']}")
-                        if len(duplicate_examples) >= 3:  # Show first 3 duplicates
-                            break
-                
-                if duplicate_examples:
-                    logger.warning(f"Duplicate examples: {', '.join(duplicate_examples)}")
-        
+        logger.info(f"Deduplication: {len(event_elements)} total elements -> {len(unique_elements)} unique elements")
         return unique_elements
     
     def _extract_fc_event(self, event_element, month: str, year: str, calendar_type: str) -> Optional[Dict]:
-        """Extract event data from a FullCalendar event element"""
+        """Extract event data from any event element by getting text directly"""
         try:
-            # Try multiple approaches to get the event title
-            title = None
-            title_selectors = [
-                'div.fc-event-title',
-                '.fc-event-title', 
-                'span',
-                'a',
-                'div'
-            ]
-            
-            for selector in title_selectors:
-                try:
-                    title_elements = event_element.find_elements(By.CSS_SELECTOR, selector)
-                    if title_elements:
-                        for elem in title_elements:
-                            text = elem.text.strip()
-                            if text and len(text) > 2:
-                                title = text
-                                break
-                        if title:
-                            break
-                except:
-                    continue
-            
-            # Fallback: get text directly from the element
-            if not title:
-                try:
-                    title = event_element.text.strip()
-                    if not title:
-                        return None
-                except:
-                    return None
-            
-            # Try multiple approaches to get the event time
-            time_str = ""
-            time_selectors = [
-                'div.fc-event-time',
-                '.fc-event-time',
-                'span[class*="time"]',
-                'div[class*="time"]'
-            ]
-            
-            for selector in time_selectors:
-                try:
-                    time_elements = event_element.find_elements(By.CSS_SELECTOR, selector)
-                    if time_elements:
-                        time_str = time_elements[0].text.strip()
-                        break
-                except:
-                    continue
-            
-            # Try multiple approaches to get the date
-            date_str = None
-            
-            # First try: Look for data-date attribute in ancestor cells
-            try:
-                date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
-                if date_cell:
-                    date_str = date_cell.get_attribute('data-date')
-            except:
-                pass
-            
-            # Second try: Look for date in parent elements
-            if not date_str:
-                try:
-                    parent_elements = event_element.find_elements(By.XPATH, './ancestor::*')
-                    for parent in parent_elements:
-                        try:
-                            parent_date = parent.get_attribute('data-date')
-                            if parent_date and len(parent_date) == 10:  # YYYY-MM-DD format
-                                date_str = parent_date
-                                break
-                        except:
-                            continue
-                except:
-                    pass
-            
-            # Third try: Look for date in the current month/year context
-            if not date_str:
-                try:
-                    # Try to find the current date from the calendar header
-                    current_date = datetime.now()
-                    if month and year and month != "Unknown" and year != "Unknown":
-                        try:
-                            # Parse month name to number
-                            month_num = datetime.strptime(month, '%B').month
-                            year_num = int(year)
-                            # Use the first day of the month as a fallback
-                            date_str = f"{year_num}-{month_num:02d}-01"
-                        except:
-                            # Use current date as fallback
-                            date_str = current_date.strftime('%Y-%m-%d')
-                    else:
-                        date_str = current_date.strftime('%Y-%m-%d')
-                except:
-                    date_str = datetime.now().strftime('%Y-%m-%d')
-            
-            if not date_str:
-                logger.warning(f"Could not determine date for event: {title}")
+            # Get the text content directly from the element
+            title = event_element.text.strip()
+            if not title or len(title) < 3:
                 return None
+            
+            # For now, use the current month/year context since we can't determine exact dates
+            # This is a limitation but will at least get us events
+            try:
+                # Parse month name to number
+                month_num = datetime.strptime(month, '%B').month
+                year_num = int(year)
+                # Use the first day of the month as a fallback
+                date_str = f"{year_num}-{month_num:02d}-01"
+            except:
+                # Use current date as fallback
+                date_str = datetime.now().strftime('%Y-%m-%d')
             
             # Parse the date
             try:
@@ -731,39 +565,28 @@ class SubsplashCalendarSync:
                 logger.warning(f"Could not parse date: {date_str}")
                 return None
             
-            # Parse the time
-            start_time, end_time = self._parse_fc_time(time_str, event_date)
-            
-            # Get event URL if available
-            event_url = event_element.get_attribute('href') or ''
-            
-            # Convert relative URLs to absolute URLs for Google Calendar
-            if event_url and event_url.startswith('/'):
-                event_url = f"https://antiochboone.com{event_url}"
-            elif not event_url:
-                event_url = f"https://antiochboone.com/calendar-{calendar_type}"
-            
-            # Create event object
+            # Create a simple event object
             event = {
                 'title': title,
-                'start': start_time,
-                'end': end_time,
+                'start': event_date.replace(hour=0, minute=0, second=0, microsecond=0),
+                'end': event_date.replace(hour=23, minute=59, second=0, microsecond=0),
                 'date': date_str,
-                'time': time_str,
+                'time': "All day",  # Default to all-day since we can't determine time
                 'month': month,
                 'year': year,
                 'calendar_type': calendar_type,
-                'url': event_url,
-                'all_day': self._is_all_day_event(start_time, end_time),
+                'url': f"https://antiochboone.com/calendar-{calendar_type}",
+                'all_day': True,
                 'source': 'Subsplash',
                 'location': 'Antioch Boone',
                 'unique_id': f"{calendar_type}_{date_str}_{title.lower().replace(' ', '_')}"
             }
             
+            logger.info(f"✅ Extracted event: '{title}' from element with class '{event_element.get_attribute('class')}'")
             return event
             
         except Exception as e:
-            logger.warning(f"Error extracting FC event: {str(e)}")
+            logger.warning(f"Error extracting event from element: {str(e)}")
             return None
     
     def _parse_fc_time(self, time_str: str, event_date: datetime) -> Tuple[datetime, datetime]:
