@@ -1,0 +1,73 @@
+name: Clean Subsplash Calendar Sync
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allow manual runs
+
+jobs:
+  sync-calendar:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Setup Chrome
+      uses: browser-actions/setup-chrome@v1
+      
+    - name: Create OAuth credentials
+      run: |
+        echo '${{ secrets.GOOGLE_CREDENTIALS }}' > oauth_credentials.json
+        
+    - name: Create token file (if exists)
+      run: |
+        if [ -n "${{ secrets.GOOGLE_TOKEN }}" ]; then
+          echo '${{ secrets.GOOGLE_TOKEN }}' | base64 -d > token.pickle
+        fi
+        
+    - name: Run calendar sync
+      env:
+        # Calendar IDs
+        BAM_CALENDAR_ID: ${{ secrets.BAM_CALENDAR_ID }}
+        KIDS_CALENDAR_ID: ${{ secrets.KIDS_CALENDAR_ID }}
+        PRAYER_CALENDAR_ID: ${{ secrets.PRAYER_CALENDAR_ID }}
+        # OAuth settings
+        GOOGLE_CREDENTIALS_FILE: oauth_credentials.json
+        GOOGLE_TOKEN_FILE: token.pickle
+        # Configuration
+        MAX_MONTHS_TO_CHECK: 6
+        MAX_CONSECUTIVE_EMPTY_MONTHS: 3
+        BROWSER_WAIT_TIME: 10
+        # Production settings
+        SAVE_DEBUG_FILES: false
+        VERBOSE_DEBUG: false
+        SAVE_STATUS_FILE: false
+        LOG_LEVEL: info
+      run: |
+        python clean_sync_script.py
+        
+    - name: Clean up credentials
+      run: |
+        rm -f oauth_credentials.json
+        rm -f token.pickle
+        
+    - name: Check sync success
+      run: |
+        if [ $? -eq 0 ]; then
+          echo "✅ Calendar sync completed successfully"
+        else
+          echo "❌ Calendar sync failed"
+          exit 1
+        fi
