@@ -49,42 +49,128 @@ class SubsplashSyncService:
     
     def scrape_subsplash_events(self):
         """
-        Scrape events from Subsplash calendar
-        This is a placeholder - you'll need to implement the actual scraping logic
-        based on how your Subsplash calendar is structured
+        Scrape real events from Subsplash calendar
         """
         try:
-            # TODO: Implement actual Subsplash scraping logic
-            # For now, returning sample events for testing
-            
             print("�� Scraping Subsplash events...")
             
-            # Sample events - replace this with actual scraping logic
-            sample_events = [
-                {
-                    'title': 'Sunday Service',
-                    'start': datetime.now().replace(hour=10, minute=0, second=0, microsecond=0),
-                    'end': datetime.now().replace(hour=11, minute=30, second=0, microsecond=0),
-                    'description': 'Weekly Sunday service at Antioch Boone',
-                    'location': 'Main Sanctuary',
-                    'all_day': False
-                },
-                {
-                    'title': 'Bible Study',
-                    'start': datetime.now().replace(hour=18, minute=30, second=0, microsecond=0),
-                    'end': datetime.now().replace(hour=20, minute=0, second=0, microsecond=0),
-                    'description': 'Weekly Bible study group',
-                    'location': 'Fellowship Hall',
-                    'all_day': False
-                }
-            ]
+            # Subsplash embed URL from your calendar
+            subsplash_url = "https://subsplash.com/+wrmm/lb/ca/+pysr4r6?embed"
             
-            print(f"✅ Found {len(sample_events)} events from Subsplash")
-            return sample_events
+            # Fetch the page
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(subsplash_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            # Parse HTML
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Find all event items
+            event_items = soup.find_all('div', class_='kit-list-item__text')
+            
+            events = []
+            for item in event_items:
+                try:
+                    # Extract title
+                    title_elem = item.find('h2', class_='kit-list-item__title')
+                    if not title_elem:
+                        continue
+                    title = title_elem.get_text(strip=True)
+                    
+                    # Extract date and time
+                    subtitle_elem = item.find('h3', class_='kit-list-item__subtitle')
+                    if not subtitle_elem:
+                        continue
+                    
+                    date_time_text = subtitle_elem.get_text(strip=True)
+                    # Parse date and time (format: "August 20, 2025 from 6:00 - 8:00pm EDT")
+                    parsed_datetime = self._parse_subsplash_datetime(date_time_text)
+                    if not parsed_datetime:
+                        continue
+                    
+                    start_time, end_time = parsed_datetime
+                    
+                    # Extract description
+                    summary_elem = item.find('p', class_='kit-list-item__summary')
+                    description = summary_elem.get_text(strip=True) if summary_elem else ""
+                    
+                    # Create event
+                    event = {
+                        'title': title,
+                        'start': start_time,
+                        'end': end_time,
+                        'description': description,
+                        'location': 'Antioch Boone',  # Default location
+                        'all_day': False
+                    }
+                    
+                    events.append(event)
+                    print(f"📅 Found event: {title} on {start_time.strftime('%B %d, %Y')}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Error parsing event: {str(e)}")
+                    continue
+            
+            print(f"✅ Found {len(events)} events from Subsplash")
+            return events
             
         except Exception as e:
             print(f"❌ Error scraping Subsplash events: {str(e)}")
             return []
+    
+    def _parse_subsplash_datetime(self, date_time_text):
+        """
+        Parse Subsplash date/time format: "August 20, 2025 from 6:00 - 8:00pm EDT"
+        Returns (start_datetime, end_datetime) or None if parsing fails
+        """
+        try:
+            import re
+            from dateutil import parser
+            
+            # Extract date and time range
+            # Pattern: "August 20, 2025 from 6:00 - 8:00pm EDT"
+            pattern = r'([A-Za-z]+ \d{1,2}, \d{4}) from (\d{1,2}:\d{2}) - (\d{1,2}:\d{2})([ap]m)'
+            match = re.search(pattern, date_time_text)
+            
+            if not match:
+                print(f"⚠️ Could not parse date/time: {date_time_text}")
+                return None
+            
+            date_str = match.group(1)  # "August 20, 2025"
+            start_time_str = match.group(2)  # "6:00"
+            end_time_str = match.group(3)   # "8:00"
+            ampm = match.group(4)           # "pm"
+            
+            # Parse the date
+            date_obj = parser.parse(date_str)
+            
+            # Parse start time
+            start_hour, start_minute = map(int, start_time_str.split(':'))
+            if ampm.lower() == 'pm' and start_hour != 12:
+                start_hour += 12
+            elif ampm.lower() == 'am' and start_hour == 12:
+                start_hour = 0
+            
+            start_datetime = date_obj.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+            
+            # Parse end time
+            end_hour, end_minute = map(int, end_time_str.split(':'))
+            if ampm.lower() == 'pm' and end_hour != 12:
+                end_hour += 12
+            elif ampm.lower() == 'am' and end_hour == 12:
+                end_hour = 0
+            
+            end_datetime = date_obj.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+            
+            return start_datetime, end_datetime
+            
+        except Exception as e:
+            print(f"⚠️ Error parsing datetime '{date_time_text}': {str(e)}")
+            return None
     
     def get_existing_google_events(self, start_date, end_date):
         """Get existing events from Google Calendar"""
