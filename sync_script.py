@@ -124,54 +124,90 @@ class SubsplashSyncService:
     
     def _parse_subsplash_datetime(self, date_time_text):
         """
-        Parse Subsplash date/time format: "August 20, 2025 from 6:00 - 8:00pm EDT"
+        Parse Subsplash date/time formats:
+        - "August 20, 2025 from 6:00 - 8:00pm EDT" (single day)
+        - "August 22, 6:00pm - August 24, 2025 11:00am EDT" (multi-day)
         Returns (start_datetime, end_datetime) or None if parsing fails
         """
         try:
             import re
             from dateutil import parser
             
-            # Extract date and time range
-            # Pattern: "August 20, 2025 from 6:00 - 8:00pm EDT"
-            pattern = r'([A-Za-z]+ \d{1,2}, \d{4}) from (\d{1,2}:\d{2}) - (\d{1,2}:\d{2})([ap]m)'
-            match = re.search(pattern, date_time_text)
+            # Try single-day format first: "August 20, 2025 from 6:00 - 8:00pm EDT"
+            single_day_pattern = r'([A-Za-z]+ \d{1,2}, \d{4}) from (\d{1,2}:\d{2})([ap]m) - (\d{1,2}:\d{2})([ap]m)'
+            single_match = re.search(single_day_pattern, date_time_text)
             
-            if not match:
-                print(f"⚠️ Could not parse date/time: {date_time_text}")
-                return None
+            if single_match:
+                date_str = single_match.group(1)  # "August 20, 2025"
+                start_time_str = single_match.group(2)  # "6:00"
+                start_ampm = single_match.group(3)  # "pm"
+                end_time_str = single_match.group(4)   # "8:00"
+                end_ampm = single_match.group(5)       # "pm"
+                
+                # Parse the date
+                date_obj = parser.parse(date_str)
+                
+                # Parse start time
+                start_hour, start_minute = map(int, start_time_str.split(':'))
+                if start_ampm.lower() == 'pm' and start_hour != 12:
+                    start_hour += 12
+                elif start_ampm.lower() == 'am' and start_hour == 12:
+                    start_hour = 0
+                
+                start_datetime = date_obj.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+                
+                # Parse end time
+                end_hour, end_minute = map(int, end_time_str.split(':'))
+                if end_ampm.lower() == 'pm' and end_hour != 12:
+                    end_hour += 12
+                elif end_ampm.lower() == 'am' and end_hour == 12:
+                    end_hour = 0
+                
+                end_datetime = date_obj.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+                
+                return start_datetime, end_datetime
             
-            date_str = match.group(1)  # "August 20, 2025"
-            start_time_str = match.group(2)  # "6:00"
-            end_time_str = match.group(3)   # "8:00"
-            ampm = match.group(4)           # "pm"
+            # Try multi-day format: "August 22, 6:00pm - August 24, 2025 11:00am EDT"
+            multi_day_pattern = r'([A-Za-z]+ \d{1,2}), (\d{1,2}:\d{2})([ap]m) - ([A-Za-z]+ \d{1,2}, \d{4}) (\d{1,2}:\d{2})([ap]m)'
+            multi_match = re.search(multi_day_pattern, date_time_text)
             
-            # Parse the date
-            date_obj = parser.parse(date_str)
+            if multi_match:
+                start_date_str = multi_match.group(1)  # "August 22"
+                start_time_str = multi_match.group(2)  # "6:00"
+                start_ampm = multi_match.group(3)      # "pm"
+                end_date_str = multi_match.group(4)    # "August 24, 2025"
+                end_time_str = multi_match.group(5)    # "11:00"
+                end_ampm = multi_match.group(6)        # "am"
+                
+                # Parse start date and time
+                start_date_obj = parser.parse(start_date_str + ", 2025")  # Assume current year
+                start_hour, start_minute = map(int, start_time_str.split(':'))
+                if start_ampm.lower() == 'pm' and start_hour != 12:
+                    start_hour += 12
+                elif start_ampm.lower() == 'am' and start_hour == 12:
+                    start_hour = 0
+                
+                start_datetime = start_date_obj.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+                
+                # Parse end date and time
+                end_date_obj = parser.parse(end_date_str)
+                end_hour, end_minute = map(int, end_time_str.split(':'))
+                if end_ampm.lower() == 'pm' and end_hour != 12:
+                    end_hour += 12
+                elif end_ampm.lower() == 'am' and end_hour == 12:
+                    end_hour = 0
+                
+                end_datetime = end_date_obj.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+                
+                return start_datetime, end_datetime
             
-            # Parse start time
-            start_hour, start_minute = map(int, start_time_str.split(':'))
-            if ampm.lower() == 'pm' and start_hour != 12:
-                start_hour += 12
-            elif ampm.lower() == 'am' and start_hour == 12:
-                start_hour = 0
-            
-            start_datetime = date_obj.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
-            
-            # Parse end time
-            end_hour, end_minute = map(int, end_time_str.split(':'))
-            if ampm.lower() == 'pm' and end_hour != 12:
-                end_hour += 12
-            elif ampm.lower() == 'am' and end_hour == 12:
-                end_hour = 0
-            
-            end_datetime = date_obj.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
-            
-            return start_datetime, end_datetime
+            print(f"⚠️ Could not parse date/time: {date_time_text}")
+            return None
             
         except Exception as e:
             print(f"⚠️ Error parsing datetime '{date_time_text}': {str(e)}")
             return None
-    
+
     def get_existing_google_events(self, start_date, end_date):
         """Get existing events from Google Calendar"""
         try:
