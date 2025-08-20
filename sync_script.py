@@ -312,19 +312,16 @@ class SubsplashCalendarSync:
             except Exception as debug_e:
                 logger.error(f"Error during page analysis: {debug_e}")
 
-        # Try multiple FullCalendar selectors in order of specificity
+        # Try the simple, working FullCalendar selector first
         event_selectors = [
-            'a.fc-event',  # Most specific - FullCalendar event links
-            '.fc-event',   # FullCalendar event elements
-            'div.fc-event', # FullCalendar event divs
-            '[class*="fc-event"]', # Any element with fc-event in class
+            'a.fc-event',  # This is what actually works
         ]
         
         event_elements = []
         used_selector = None
         
-        # First try: Standard FullCalendar selectors
-        logger.info("🔍 STEP 1: Trying standard FullCalendar selectors...")
+        # Try the working selector
+        logger.info("🔍 Trying FullCalendar event selector...")
         for selector in event_selectors:
             try:
                 logger.info(f"  Trying selector: '{selector}'")
@@ -336,20 +333,15 @@ class SubsplashCalendarSync:
                     used_selector = selector
                     logger.info(f"✅ SUCCESS: Found {len(elements)} events using selector: {selector}")
                     
-                    # Additional debugging for GitHub Actions
-                    if os.getenv('GITHUB_ACTIONS') == 'true':
-                        logger.info(f"🔍 GitHub Actions: Detailed analysis of {len(elements)} elements")
-                        # Log first few elements for debugging
-                        for i, elem in enumerate(elements[:5]):
-                            try:
-                                title_text = elem.find_elements(By.CSS_SELECTOR, 'div.fc-event-title')
-                                title = title_text[0].text.strip() if title_text else "NO_TITLE"
-                                classes = elem.get_attribute('class') or "NO_CLASS"
-                                tag = elem.tag_name
-                                text_preview = elem.text[:100] if elem.text else "NO_TEXT"
-                                logger.info(f"  Element {i}: Tag='{tag}' Class='{classes}' Title='{title}' Text='{text_preview}'")
-                            except Exception as debug_e:
-                                logger.info(f"  Element {i}: Error getting info: {debug_e}")
+                    # Log details for debugging
+                    for i, elem in enumerate(elements[:5]):
+                        try:
+                            title = elem.text.strip()[:100] if elem.text else "NO_TEXT"
+                            classes = elem.get_attribute('class') or "NO_CLASS"
+                            tag = elem.tag_name
+                            logger.info(f"  Element {i}: Tag='{tag}' Class='{classes}' Text='{title}'")
+                        except Exception as debug_e:
+                            logger.info(f"  Element {i}: Error getting info: {debug_e}")
                     
                     break
                 else:
@@ -358,90 +350,20 @@ class SubsplashCalendarSync:
                 logger.warning(f"  ❌ Selector '{selector}' failed: {e}")
                 continue
         
-        # If no events found with standard selectors, try alternative approaches
+        # If no events found, log what we did find for debugging
         if not event_elements:
-            logger.warning("Standard FullCalendar selectors failed, trying alternative approaches...")
-            
-            # Try looking for events in table cells
+            logger.warning("No FullCalendar events found with working selector")
+            # Log what we did find for debugging
             try:
-                table_cells = self.browser.find_elements(By.CSS_SELECTOR, 'td.fc-day')
-                logger.info(f"Found {len(table_cells)} table day cells")
-                
-                for cell in table_cells:
-                    # Look for any clickable elements or divs that might be events
-                    cell_events = cell.find_elements(By.CSS_SELECTOR, 'a, div[class*="event"], div[class*="fc"]')
-                    if cell_events:
-                        event_elements.extend(cell_events)
-                        logger.info(f"Found {len(cell_events)} potential events in table cell")
-                
-                if event_elements:
-                    used_selector = "table_cell_events"
-                    logger.info(f"Total events found via table cells: {len(event_elements)}")
-                    
-            except Exception as e:
-                logger.debug(f"Table cell approach failed: {e}")
-            
-            # If still no events, try looking for any clickable elements
-            if not event_elements:
-                try:
-                    clickable_elements = self.browser.find_elements(By.CSS_SELECTOR, 'a[href], div[onclick], div[class*="click"]')
-                    logger.info(f"Found {len(clickable_elements)} clickable elements")
-                    
-                    # Filter for elements that might be events
-                    for elem in clickable_elements:
-                        try:
-                            text = elem.text.strip()
-                            if text and len(text) > 3 and any(keyword in text.lower() for keyword in ['prayer', 'meeting', 'event', 'service', 'group']):
-                                event_elements.append(elem)
-                        except:
-                            continue
-                    
-                    if event_elements:
-                        used_selector = "clickable_elements"
-                        logger.info(f"Total events found via clickable elements: {len(event_elements)}")
-                        
-                except Exception as e:
-                    logger.debug(f"Clickable elements approach failed: {e}")
-        
-        # Final fallback: Look for any elements with event-like text
-        if not event_elements:
-            logger.warning("All standard approaches failed, trying text-based event detection...")
-            try:
-                all_divs = self.browser.find_elements(By.TAG_NAME, 'div')
-                event_like_divs = []
-                
-                for div in all_divs:
-                    try:
-                        text = div.text.strip()
-                        if text and len(text) > 3:
-                            # Look for patterns that suggest this is an event
-                            if any(keyword in text.lower() for keyword in ['prayer', 'meeting', 'event', 'service', 'group', 'bible', 'worship']):
-                                event_like_divs.append(div)
-                    except:
-                        continue
-                
-                if event_like_divs:
-                    event_elements = event_like_divs
-                    used_selector = "text_based_detection"
-                    logger.info(f"Found {len(event_elements)} potential events via text analysis")
-                    
-            except Exception as e:
-                logger.debug(f"Text-based detection failed: {e}")
-        
-        if not event_elements:
-            logger.warning("No FullCalendar events found with any selector")
-            # Try to understand what's on the page
-            try:
-                # Look for any elements that might contain event information
                 all_divs = self.browser.find_elements(By.TAG_NAME, 'div')
                 event_like_divs = [div for div in all_divs if any(keyword in div.get_attribute('class') or keyword in div.get_attribute('id') or keyword in div.text.lower() 
                                                                for keyword in ['event', 'calendar', 'schedule', 'meeting', 'prayer', 'kids', 'bam'])]
                 logger.info(f"Found {len(event_like_divs)} divs that might contain event info")
                 
-                # Save a sample of these elements for debugging
+                # Save a sample for debugging
                 if event_like_divs and self.save_debug_files:
                     debug_elements = []
-                    for i, div in enumerate(event_like_divs[:10]):  # First 10
+                    for i, div in enumerate(event_like_divs[:10]):
                         try:
                             debug_elements.append({
                                 'index': i,
