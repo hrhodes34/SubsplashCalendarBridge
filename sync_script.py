@@ -30,6 +30,17 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 GOOGLE_CALENDAR_ID = os.environ.get('GOOGLE_CALENDAR_ID')
 SUBSPLASH_EMBED_URL = os.environ.get('SUBSPLASH_EMBED_URL')
 
+# Browser navigation configuration
+BROWSER_NAVIGATION_ENABLED = os.environ.get('BROWSER_NAVIGATION_ENABLED', 'true').lower() == 'true'
+MAX_MONTHS_TO_CHECK = int(os.environ.get('MAX_MONTHS_TO_CHECK', '24'))
+MAX_CONSECUTIVE_EMPTY_MONTHS = int(os.environ.get('MAX_CONSECUTIVE_EMPTY_MONTHS', '3'))
+MAX_NAVIGATION_FAILURES = int(os.environ.get('MAX_NAVIGATION_FAILURES', '5'))
+BROWSER_WAIT_TIME = int(os.environ.get('BROWSER_WAIT_TIME', '10' if os.environ.get('GITHUB_ACTIONS') == 'true' else '3'))
+
+# Debug configuration
+DEBUG_MODE = os.environ.get('DEBUG_MODE', 'false').lower() == 'true'
+SAVE_DEBUG_FILES = os.environ.get('SAVE_DEBUG_FILES', 'false').lower() == 'true'
+
 class SubsplashSyncService:
     def __init__(self):
         self.calendar_service = None
@@ -2450,125 +2461,158 @@ class SubsplashSyncService:
             print("🌐 Starting browser-based month-by-month navigation...")
             print("This will actually click the navigation arrows to advance months!")
             
-            # Set up Chrome options for headless operation
+            # Detect if we're running in GitHub Actions
+            is_github_actions = os.environ.get('GITHUB_ACTIONS') == 'true'
+            print(f"🔍 Environment: {'GitHub Actions' if is_github_actions else 'Local Development'}")
+            
+            # Set up Chrome options optimized for the environment
             chrome_options = Options()
-            chrome_options.add_argument("--headless")  # Run in background
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-web-security")
-            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            if is_github_actions:
+                # GitHub Actions specific options
+                chrome_options.add_argument("--headless")
+                chrome_options.add_argument("--no-sandbox")
+                chrome_options.add_argument("--disable-dev-shm-usage")
+                chrome_options.add_argument("--disable-gpu")
+                chrome_options.add_argument("--disable-web-security")
+                chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+                chrome_options.add_argument("--disable-extensions")
+                chrome_options.add_argument("--disable-plugins")
+                chrome_options.add_argument("--disable-images")
+                # chrome_options.add_argument("--disable-javascript")  # Don't disable JavaScript - FullCalendar needs it!
+                chrome_options.add_argument("--window-size=1920,1080")
+                chrome_options.add_argument("--remote-debugging-port=9222")
+                print("  🔧 Using GitHub Actions optimized Chrome options")
+            else:
+                # Local development options
+                chrome_options.add_argument("--headless")
+                chrome_options.add_argument("--no-sandbox")
+                chrome_options.add_argument("--disable-dev-shm-usage")
+                chrome_options.add_argument("--disable-web-security")
+                chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+                print("  🔧 Using local development Chrome options")
             
             # Initialize the driver
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
             try:
+                print("  🌐 Navigating to calendar page...")
                 driver.get("https://antiochboone.com/calendar")
-                time.sleep(3) # Give page time to load
+                
+                # Wait for page to load with different strategies
+                if is_github_actions:
+                    print("  ⏳ Waiting for page load (GitHub Actions mode)...")
+                    time.sleep(10)  # Longer wait for CI environment
+                else:
+                    print("  ⏳ Waiting for page load (Local mode)...")
+                    time.sleep(3)
+                
+                # Verify page loaded correctly
+                try:
+                    page_title = driver.title
+                    print(f"  📄 Page title: {page_title}")
+                    
+                    # Check if we can find the calendar elements
+                    calendar_elements = driver.find_elements(By.CSS_SELECTOR, ".fc-toolbar-title, .fc-calendar, [class*='calendar']")
+                    print(f"  🔍 Found {len(calendar_elements)} calendar elements")
+                    
+                    if not calendar_elements:
+                        print("  ⚠️ No calendar elements found, page may not have loaded properly")
+                        return events
+                        
+                except Exception as e:
+                    print(f"  ❌ Error checking page load: {str(e)}")
+                    return events
                 
                 consecutive_empty_months = 0
                 max_months_to_check = int(os.environ.get('MAX_MONTHS_TO_CHECK', 24)) # Default 2 years
                 max_consecutive_empty = int(os.environ.get('MAX_CONSECUTIVE_EMPTY_MONTHS', 3))
+                max_navigation_failures = int(os.environ.get('MAX_NAVIGATION_FAILURES', 5))
+                navigation_failures = 0
+                
+                # Loop detection
+                seen_months = {}  # Dictionary to track month counts
+                loop_detection_threshold = 3  # If we see the same month 3 times, we're in a loop
+                
+                print(f"  📊 Configuration: Max months={max_months_to_check}, Max empty={max_consecutive_empty}, Max nav failures={max_navigation_failures}")
                 
                 for month_count in range(max_months_to_check):
-                    current_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
-                    print(f"\n📅 Scraping month: {current_month_year} (Month {month_count + 1}/{max_months_to_check})")
-                    
-                    # Extract events from the current page
-                    page_events = self._extract_events_from_browser_page(driver)
-                    
-                    if page_events:
-                        events.extend(page_events)
-                        print(f"  ✅ Found {len(page_events)} events for {current_month_year}")
-                        consecutive_empty_months = 0 # Reset counter
-                    else:
-                        consecutive_empty_months += 1
-                        print(f"  📭 No events found for {current_month_year} (empty month #{consecutive_empty_months})")
-                    
-                    # Check if we should stop
-                    if consecutive_empty_months >= max_consecutive_empty:
-                        print(f"🛑 Stopping after {max_consecutive_empty} consecutive empty months")
-                        break
-                    
-                    # Find and click the next month arrow (right arrow >)
                     try:
-                        # Use the exact FullCalendar selector we found in debug
-                        next_arrow = driver.find_element(By.CSS_SELECTOR, "button.fc-next-button")
+                        # Get current month/year
+                        current_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                        print(f"\n📅 Scraping month: {current_month_year} (Month {month_count + 1}/{max_months_to_check})")
                         
-                        if next_arrow:
-                            title = next_arrow.get_attribute('title') or 'Next month'
-                            print(f"  ✅ Found next month button: {title}")
-                            print(f"  ➡️ Clicking next month arrow...")
+                        # Loop detection
+                        if current_month_year in seen_months:
+                            seen_months[current_month_year] = seen_months.get(current_month_year, 0) + 1
+                            print(f"  ⚠️ Month '{current_month_year}' seen {seen_months[current_month_year]} times (possible loop)")
                             
-                            # Try multiple click strategies
-                            click_success = False
-                            
-                            # Strategy 1: JavaScript click
-                            try:
-                                driver.execute_script("arguments[0].click();", next_arrow)
-                                click_success = True
-                                print("  ✅ Clicked via JavaScript")
-                            except Exception as js_error:
-                                print(f"  ⚠️ JavaScript click failed: {str(js_error)}")
-                            
-                            # Strategy 2: Scroll into view and click
-                            if not click_success:
-                                try:
-                                    driver.execute_script("arguments[0].scrollIntoView(true);", next_arrow)
-                                    time.sleep(1)
-                                    next_arrow.click()
-                                    click_success = True
-                                    print("  ✅ Clicked after scrolling into view")
-                                except Exception as scroll_error:
-                                    print(f"  ⚠️ Scroll + click failed: {str(scroll_error)}")
-                            
-                            # Strategy 3: Wait for element to be clickable
-                            if not click_success:
-                                try:
-                                    WebDriverWait(driver, 10).until(
-                                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button.fc-next-button"))
-                                    )
-                                    next_arrow.click()
-                                    click_success = True
-                                    print("  ✅ Clicked after waiting for clickable")
-                                except Exception as wait_error:
-                                    print(f"  ⚠️ Wait + click failed: {str(wait_error)}")
-                            
-                            if click_success:
-                                # Wait for the new month to load
-                                time.sleep(3)  # Wait for content to render
+                            if seen_months[current_month_year] >= loop_detection_threshold:
+                                print(f"  🚨 LOOP DETECTED! Month '{current_month_year}' seen {seen_months[current_month_year]} times")
+                                print(f"  🔧 Attempting loop recovery...")
                                 
-                                # Verify month actually changed
-                                new_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
-                                if new_month_year != current_month_year:
-                                    print(f"  ✅ Month advanced from '{current_month_year}' to '{new_month_year}'")
+                                # Try to break out of the loop
+                                recovery_success = self._attempt_loop_recovery(driver, current_month_year)
+                                if recovery_success:
+                                    print(f"  ✅ Loop recovery successful, continuing...")
+                                    seen_months.clear()  # Reset loop detection
                                 else:
-                                    print(f"  ⚠️ Month didn't change, still showing '{current_month_year}'")
-                                    # Try one more time with a longer wait
-                                    time.sleep(2)
-                                    new_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
-                                    if new_month_year != current_month_year:
-                                        print(f"  ✅ Month advanced after longer wait: '{new_month_year}'")
-                                    else:
-                                        print(f"  ❌ Month still didn't change, navigation may be stuck")
-                                        break
-                            else:
-                                raise Exception("All click strategies failed")
-                            
+                                    print(f"  ❌ Loop recovery failed, stopping navigation")
+                                    break
                         else:
-                            raise Exception("Next month button not found")
+                            seen_months[current_month_year] = 1
                         
-                    except Exception as e:
-                        print(f"  ❌ Could not navigate to next month: {str(e)}")
-                        print("  🔍 Trying alternative navigation methods...")
+                        # Extract events from the current page
+                        page_events = self._extract_events_from_browser_page(driver)
                         
-                        # Try alternative navigation methods
-                        alt_nav_success = self._try_alternative_browser_navigation(driver)
-                        if not alt_nav_success:
-                            print("  ❌ No navigation method worked, stopping")
+                        if page_events:
+                            events.extend(page_events)
+                            print(f"  ✅ Found {len(page_events)} events for {current_month_year}")
+                            consecutive_empty_months = 0 # Reset counter
+                        else:
+                            consecutive_empty_months += 1
+                            print(f"  📭 No events found for {current_month_year} (empty month #{consecutive_empty_months})")
+                        
+                        # Check if we should stop
+                        if consecutive_empty_months >= max_consecutive_empty:
+                            print(f"🛑 Stopping after {max_consecutive_empty} consecutive empty months")
                             break
+                        
+                        # Check if we've had too many navigation failures
+                        if navigation_failures >= max_navigation_failures:
+                            print(f"🛑 Stopping after {max_navigation_failures} navigation failures")
+                            break
+                        
+                        # Find and click the next month arrow
+                        navigation_success = self._navigate_to_next_month(driver, current_month_year, is_github_actions)
+                        
+                        if navigation_success:
+                            navigation_failures = 0  # Reset failure counter
+                            print(f"  ✅ Successfully navigated to next month")
+                        else:
+                            navigation_failures += 1
+                            print(f"  ❌ Navigation failed (failure #{navigation_failures}/{max_navigation_failures})")
+                            
+                            # Try alternative navigation methods
+                            if navigation_failures >= 2:  # After 2 failures, try alternatives
+                                print("  🔍 Trying alternative navigation methods...")
+                                alt_nav_success = self._try_alternative_browser_navigation(driver)
+                                if alt_nav_success:
+                                    navigation_failures = 0  # Reset on successful alternative
+                                    print("  ✅ Alternative navigation succeeded")
+                                else:
+                                    print("  ❌ Alternative navigation also failed")
+                    
+                    except Exception as e:
+                        print(f"  ⚠️ Error processing month {month_count + 1}: {str(e)}")
+                        consecutive_empty_months += 1
+                        navigation_failures += 1
+                        if consecutive_empty_months >= max_consecutive_empty or navigation_failures >= max_navigation_failures:
+                            break
+                        continue
                 
                 print(f"🏁 Browser navigation complete. Found {len(events)} total events across {month_count + 1} months.")
+                print(f"📊 Final stats: Navigation failures={navigation_failures}, Empty months={consecutive_empty_months}")
                 
             finally:
                 driver.quit()
@@ -2580,6 +2624,100 @@ class SubsplashSyncService:
             traceback.print_exc()
         
         return events
+    
+    def _navigate_to_next_month(self, driver, current_month_year, is_github_actions):
+        """Navigate to the next month with multiple strategies and verification"""
+        try:
+            print(f"  ➡️ Attempting to navigate from '{current_month_year}'...")
+            
+            # Find the next month button
+            next_arrow = driver.find_element(By.CSS_SELECTOR, "button.fc-next-button")
+            if not next_arrow:
+                print("  ❌ Next month button not found")
+                return False
+            
+            title = next_arrow.get_attribute('title') or 'Next month'
+            print(f"  ✅ Found next month button: {title}")
+            
+            # Try multiple click strategies
+            click_success = False
+            
+            # Strategy 1: JavaScript click (most reliable)
+            try:
+                print("  🔧 Trying JavaScript click...")
+                driver.execute_script("arguments[0].click();", next_arrow)
+                click_success = True
+                print("  ✅ Clicked via JavaScript")
+            except Exception as js_error:
+                print(f"  ⚠️ JavaScript click failed: {str(js_error)}")
+            
+            # Strategy 2: Scroll into view and click
+            if not click_success:
+                try:
+                    print("  🔧 Trying scroll + click...")
+                    driver.execute_script("arguments[0].scrollIntoView(true);", next_arrow)
+                    time.sleep(1)
+                    next_arrow.click()
+                    click_success = True
+                    print("  ✅ Clicked after scrolling into view")
+                except Exception as scroll_error:
+                    print(f"  ⚠️ Scroll + click failed: {str(scroll_error)}")
+            
+            # Strategy 3: Wait for element to be clickable
+            if not click_success:
+                try:
+                    print("  🔧 Trying wait + click...")
+                    WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button.fc-next-button"))
+                    )
+                    next_arrow.click()
+                    click_success = True
+                    print("  ✅ Clicked after waiting for clickable")
+                except Exception as wait_error:
+                    print(f"  ⚠️ Wait + click failed: {str(wait_error)}")
+            
+            if not click_success:
+                print("  ❌ All click strategies failed")
+                return False
+            
+            # Wait for the new month to load
+            if is_github_actions:
+                print("  ⏳ Waiting for month change (GitHub Actions mode)...")
+                time.sleep(5)  # Longer wait for CI
+            else:
+                print("  ⏳ Waiting for month change (Local mode)...")
+                time.sleep(3)
+            
+            # Verify month actually changed
+            try:
+                new_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                print(f"  🔍 Month changed from '{current_month_year}' to '{new_month_year}'")
+                
+                if new_month_year != current_month_year:
+                    print(f"  ✅ Month navigation successful!")
+                    return True
+                else:
+                    print(f"  ⚠️ Month didn't change, still showing '{current_month_year}'")
+                    
+                    # Try one more time with a longer wait
+                    print("  🔧 Trying longer wait for month change...")
+                    time.sleep(3)
+                    new_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                    
+                    if new_month_year != current_month_year:
+                        print(f"  ✅ Month advanced after longer wait: '{new_month_year}'")
+                        return True
+                    else:
+                        print(f"  ❌ Month still didn't change, navigation may be stuck")
+                        return False
+                        
+            except Exception as e:
+                print(f"  ❌ Error verifying month change: {str(e)}")
+                return False
+                
+        except Exception as e:
+            print(f"  ❌ Error in month navigation: {str(e)}")
+            return False
     
     def _extract_events_from_browser_page(self, driver):
         """Extract events from the current browser page"""
@@ -3359,6 +3497,79 @@ class SubsplashSyncService:
         except Exception as e:
             print(f"❌ Error simulating browser behavior: {str(e)}")
             return events
+
+    def _attempt_loop_recovery(self, driver, stuck_month):
+        """Attempt to recover from a navigation loop"""
+        try:
+            print(f"    🔧 Attempting loop recovery for month '{stuck_month}'...")
+            
+            # Strategy 1: Try clicking the next month button multiple times
+            try:
+                next_arrow = driver.find_element(By.CSS_SELECTOR, "button.fc-next-button")
+                print(f"    🔧 Strategy 1: Multiple clicks on next button...")
+                
+                for attempt in range(3):
+                    driver.execute_script("arguments[0].click();", next_arrow)
+                    time.sleep(2)
+                    
+                    new_month = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                    if new_month != stuck_month:
+                        print(f"    ✅ Recovery successful! Month changed to '{new_month}'")
+                        return True
+                    else:
+                        print(f"    ⚠️ Attempt {attempt + 1}: Still on '{stuck_month}'")
+                
+                print(f"    ❌ Multiple clicks didn't work")
+                
+            except Exception as e:
+                print(f"    ⚠️ Strategy 1 failed: {str(e)}")
+            
+            # Strategy 2: Try refreshing the page and starting over
+            try:
+                print(f"    🔧 Strategy 2: Refreshing page...")
+                driver.refresh()
+                time.sleep(5)  # Wait for page to reload
+                
+                # Check if we're on a different month
+                new_month = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                if new_month != stuck_month:
+                    print(f"    ✅ Recovery successful! Page refresh changed month to '{new_month}'")
+                    return True
+                else:
+                    print(f"    ⚠️ Page refresh didn't change month")
+                    
+            except Exception as e:
+                print(f"    ⚠️ Strategy 2 failed: {str(e)}")
+            
+            # Strategy 3: Try navigating to a specific month using URL manipulation
+            try:
+                print(f"    🔧 Strategy 3: URL-based navigation...")
+                
+                # Get current URL and try to modify it
+                current_url = driver.current_url
+                print(f"    📍 Current URL: {current_url}")
+                
+                # Try to navigate to a different month by going back to current month
+                # This might trigger a different loading mechanism
+                driver.get(current_url)
+                time.sleep(3)
+                
+                new_month = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                if new_month != stuck_month:
+                    print(f"    ✅ Recovery successful! URL navigation changed month to '{new_month}'")
+                    return True
+                else:
+                    print(f"    ⚠️ URL navigation didn't change month")
+                    
+            except Exception as e:
+                print(f"    ⚠️ Strategy 3 failed: {str(e)}")
+            
+            print(f"    ❌ All loop recovery strategies failed")
+            return False
+            
+        except Exception as e:
+            print(f"    ❌ Error in loop recovery: {str(e)}")
+            return False
 
 def main():
     """Main function for GitHub Actions"""
