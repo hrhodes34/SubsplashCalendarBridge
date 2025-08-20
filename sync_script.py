@@ -6,8 +6,9 @@ This script runs automatically via GitHub Actions to sync events from Subsplash 
 
 import os
 import json
+import re
 import requests
-from datetime import datetime, timedelta, relativedelta
+from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -15,6 +16,14 @@ from googleapiclient.errors import HttpError
 import time
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -67,61 +76,60 @@ class SubsplashSyncService:
                 subsplash_url.replace("?embed", "?view=list"),
                 subsplash_url.replace("?embed", "?view=month"),
                 subsplash_url.replace("?embed", "?view=year"),
-                subsplash_url.replace("?embed", "&limit=100"),
-                subsplash_url.replace("?embed", "&limit=200"),
-                subsplash_url.replace("?embed", "&limit=500"),
-                subsplash_url.replace("?embed", "&show_all=1"),
-                subsplash_url.replace("?embed", "&include_past=1"),
-                subsplash_url.replace("?embed", "&include_future=1"),
-                subsplash_url.replace("?embed", "&future_events=1"),
-                subsplash_url.replace("?embed", "&all_events=1"),
-                subsplash_url.replace("?embed", "&range=all"),
-                subsplash_url.replace("?embed", "&range=future"),
-                subsplash_url.replace("?embed", "&range=year"),
-                subsplash_url.replace("?embed", "&range=6months"),
-                subsplash_url.replace("?embed", "&range=12months"),
-                subsplash_url.replace("?embed", "&months_ahead=6"),
-                subsplash_url.replace("?embed", "&months_ahead=12"),
-                subsplash_url.replace("?embed", "&months_ahead=24"),
-                subsplash_url.replace("?embed", "&start_date=today"),
-                subsplash_url.replace("?embed", "&end_date=2026-12-31"),
-                subsplash_url.replace("?embed", "&end_date=2027-12-31"),
-                subsplash_url.replace("?embed", "&end_date=2028-12-31"),
-                subsplash_url.replace("?embed", "&timeframe=all"),
-                subsplash_url.replace("?embed", "&timeframe=future"),
-                subsplash_url.replace("?embed", "&timeframe=year"),
-                subsplash_url.replace("?embed", "&timeframe=extended"),
-                subsplash_url.replace("?embed", "&load_more=1"),
-                subsplash_url.replace("?embed", "&expand=1"),
-                subsplash_url.replace("?embed", "&full=1"),
-                subsplash_url.replace("?embed", "&complete=1"),
-                subsplash_url.replace("?embed", "&all=1"),
+                subsplash_url + "&limit=100",
+                subsplash_url + "&limit=200",
+                subsplash_url + "&limit=500",
+                subsplash_url + "&show_all=1",
+                subsplash_url + "&include_past=1",
+                subsplash_url + "&include_future=1",
+                subsplash_url + "&future_events=1",
+                subsplash_url + "&all_events=1",
+                subsplash_url + "&range=all",
+                subsplash_url + "&range=future",
+                subsplash_url + "&range=year",
+                subsplash_url + "&range=6months",
+                subsplash_url + "&range=12months",
+                subsplash_url + "&months_ahead=6",
+                subsplash_url + "&months_ahead=12",
+                subsplash_url + "&months_ahead=24",
+                subsplash_url + "&start_date=today",
+                subsplash_url + "&end_date=2026-12-31",
+                subsplash_url + "&end_date=2027-12-31",
+                subsplash_url + "&end_date=2028-12-31",
+                subsplash_url + "&timeframe=all",
+                subsplash_url + "&timeframe=future",
+                subsplash_url + "&timeframe=year",
+                subsplash_url + "&timeframe=extended",
+                subsplash_url + "&expand=1",
+                subsplash_url + "&full=1",
+                subsplash_url + "&complete=1",
+                subsplash_url + "&all=1",
                 # Add more aggressive future loading parameters
-                subsplash_url.replace("?embed", "&months_ahead=36"),
-                subsplash_url.replace("?embed", "&months_ahead=48"),
-                subsplash_url.replace("?embed", "&months_ahead=60"),
-                subsplash_url.replace("?embed", "&end_date=2030-12-31"),
-                subsplash_url.replace("?embed", "&end_date=2035-12-31"),
-                subsplash_url.replace("?embed", "&range=extended"),
-                subsplash_url.replace("?embed", "&range=unlimited"),
-                subsplash_url.replace("?embed", "&load_all_future=1"),
-                subsplash_url.replace("?embed", "&future_limit=none"),
+                subsplash_url + "&months_ahead=36",
+                subsplash_url + "&months_ahead=48",
+                subsplash_url + "&months_ahead=60",
+                subsplash_url + "&end_date=2030-12-31",
+                subsplash_url + "&end_date=2035-12-31",
+                subsplash_url + "&range=extended",
+                subsplash_url + "&range=unlimited",
+                subsplash_url + "&load_all_future=1",
+                subsplash_url + "&future_limit=none",
                 # Try different calendar navigation approaches
-                subsplash_url.replace("?embed", "&nav=next_year"),
-                subsplash_url.replace("?embed", "&nav=extended"),
-                subsplash_url.replace("?embed", "&nav=all_future"),
+                subsplash_url + "&nav=next_year",
+                subsplash_url + "&nav=extended",
+                subsplash_url + "&nav=all_future",
                 # Try to force full calendar load
-                subsplash_url.replace("?embed", "&force_load=1"),
-                subsplash_url.replace("?embed", "&preload=1"),
-                subsplash_url.replace("?embed", "&cache=1"),
+                subsplash_url + "&force_load=1",
+                subsplash_url + "&preload=1",
+                subsplash_url + "&cache=1",
                 # Try different event loading strategies
-                subsplash_url.replace("?embed", "&load_strategy=all"),
-                subsplash_url.replace("?embed", "&load_strategy=future"),
-                subsplash_url.replace("?embed", "&load_strategy=extended"),
+                subsplash_url + "&load_strategy=all",
+                subsplash_url + "&load_strategy=future",
+                subsplash_url + "&load_strategy=extended",
                 # Try to trigger lazy loading
-                subsplash_url.replace("?embed", "&lazy_load=1"),
-                subsplash_url.replace("?embed", "&infinite_scroll=1"),
-                subsplash_url.replace("?embed", "&auto_load=1")
+                subsplash_url + "&lazy_load=1",
+                subsplash_url + "&infinite_scroll=1",
+                subsplash_url + "&auto_load=1"
             ]
             
             all_events = []
@@ -181,6 +189,13 @@ class SubsplashSyncService:
                 all_events.extend(calendar_events)
                 print(f"✅ Calendar scraping: Found {len(calendar_events)} events")
             
+            # Try browser-based month-by-month navigation (clicks actual arrows!)
+            print("🌐 Trying browser-based month-by-month navigation...")
+            browser_calendar_events = self._scrape_calendar_with_browser_navigation()
+            if browser_calendar_events:
+                all_events.extend(browser_calendar_events)
+                print(f"✅ Browser navigation: Found {len(browser_calendar_events)} events")
+            
             # Try alternative calendar navigation approaches
             print("🔍 Trying alternative calendar navigation approaches...")
             alt_calendar_events = self._try_alternative_calendar_navigation()
@@ -218,7 +233,6 @@ class SubsplashSyncService:
             response.raise_for_status()
             
             # Parse HTML
-            from bs4 import BeautifulSoup
             soup = BeautifulSoup(response.content, 'html.parser')
             
             print(f"📄 Page content length: {len(response.content)} characters")
@@ -2428,6 +2442,447 @@ class SubsplashSyncService:
             print(f"        ⚠️ Error parsing cell text as event: {str(e)}")
             return None
     
+    def _scrape_calendar_with_browser_navigation(self):
+        """Use Selenium to navigate month-by-month by clicking the navigation arrows"""
+        events = []
+        
+        try:
+            print("🌐 Starting browser-based month-by-month navigation...")
+            print("This will actually click the navigation arrows to advance months!")
+            
+            # Set up Chrome options for headless operation
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")  # Run in background
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            
+            # Initialize the driver
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            try:
+                driver.get("https://antiochboone.com/calendar")
+                time.sleep(3) # Give page time to load
+                
+                consecutive_empty_months = 0
+                max_months_to_check = int(os.environ.get('MAX_MONTHS_TO_CHECK', 24)) # Default 2 years
+                max_consecutive_empty = int(os.environ.get('MAX_CONSECUTIVE_EMPTY_MONTHS', 3))
+                
+                for month_count in range(max_months_to_check):
+                    current_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                    print(f"\n📅 Scraping month: {current_month_year} (Month {month_count + 1}/{max_months_to_check})")
+                    
+                    # Extract events from the current page
+                    page_events = self._extract_events_from_browser_page(driver)
+                    
+                    if page_events:
+                        events.extend(page_events)
+                        print(f"  ✅ Found {len(page_events)} events for {current_month_year}")
+                        consecutive_empty_months = 0 # Reset counter
+                    else:
+                        consecutive_empty_months += 1
+                        print(f"  📭 No events found for {current_month_year} (empty month #{consecutive_empty_months})")
+                    
+                    # Check if we should stop
+                    if consecutive_empty_months >= max_consecutive_empty:
+                        print(f"🛑 Stopping after {max_consecutive_empty} consecutive empty months")
+                        break
+                    
+                    # Find and click the next month arrow (right arrow >)
+                    try:
+                        # Use the exact FullCalendar selector we found in debug
+                        next_arrow = driver.find_element(By.CSS_SELECTOR, "button.fc-next-button")
+                        
+                        if next_arrow:
+                            title = next_arrow.get_attribute('title') or 'Next month'
+                            print(f"  ✅ Found next month button: {title}")
+                            print(f"  ➡️ Clicking next month arrow...")
+                            
+                            # Try multiple click strategies
+                            click_success = False
+                            
+                            # Strategy 1: JavaScript click
+                            try:
+                                driver.execute_script("arguments[0].click();", next_arrow)
+                                click_success = True
+                                print("  ✅ Clicked via JavaScript")
+                            except Exception as js_error:
+                                print(f"  ⚠️ JavaScript click failed: {str(js_error)}")
+                            
+                            # Strategy 2: Scroll into view and click
+                            if not click_success:
+                                try:
+                                    driver.execute_script("arguments[0].scrollIntoView(true);", next_arrow)
+                                    time.sleep(1)
+                                    next_arrow.click()
+                                    click_success = True
+                                    print("  ✅ Clicked after scrolling into view")
+                                except Exception as scroll_error:
+                                    print(f"  ⚠️ Scroll + click failed: {str(scroll_error)}")
+                            
+                            # Strategy 3: Wait for element to be clickable
+                            if not click_success:
+                                try:
+                                    WebDriverWait(driver, 10).until(
+                                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button.fc-next-button"))
+                                    )
+                                    next_arrow.click()
+                                    click_success = True
+                                    print("  ✅ Clicked after waiting for clickable")
+                                except Exception as wait_error:
+                                    print(f"  ⚠️ Wait + click failed: {str(wait_error)}")
+                            
+                            if click_success:
+                                # Wait for the new month to load
+                                time.sleep(3)  # Wait for content to render
+                                
+                                # Verify month actually changed
+                                new_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                                if new_month_year != current_month_year:
+                                    print(f"  ✅ Month advanced from '{current_month_year}' to '{new_month_year}'")
+                                else:
+                                    print(f"  ⚠️ Month didn't change, still showing '{current_month_year}'")
+                                    # Try one more time with a longer wait
+                                    time.sleep(2)
+                                    new_month_year = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                                    if new_month_year != current_month_year:
+                                        print(f"  ✅ Month advanced after longer wait: '{new_month_year}'")
+                                    else:
+                                        print(f"  ❌ Month still didn't change, navigation may be stuck")
+                                        break
+                            else:
+                                raise Exception("All click strategies failed")
+                            
+                        else:
+                            raise Exception("Next month button not found")
+                        
+                    except Exception as e:
+                        print(f"  ❌ Could not navigate to next month: {str(e)}")
+                        print("  🔍 Trying alternative navigation methods...")
+                        
+                        # Try alternative navigation methods
+                        alt_nav_success = self._try_alternative_browser_navigation(driver)
+                        if not alt_nav_success:
+                            print("  ❌ No navigation method worked, stopping")
+                            break
+                
+                print(f"🏁 Browser navigation complete. Found {len(events)} total events across {month_count + 1} months.")
+                
+            finally:
+                driver.quit()
+                print("🌐 Browser closed")
+        
+        except Exception as e:
+            print(f"❌ Error in browser-based navigation: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
+        return events
+    
+    def _extract_events_from_browser_page(self, driver):
+        """Extract events from the current browser page"""
+        events = []
+        
+        try:
+            # Get the page source and parse with BeautifulSoup
+            page_source = driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+            
+            # Look for event elements on the page
+            event_selectors = [
+                'div[class*="event"]',
+                'div[class*="calendar-event"]',
+                'td[class*="event"]',
+                'li[class*="event"]',
+                'div[class*="day-event"]',
+                'span[class*="event"]',
+                'a[class*="event"]'
+            ]
+            
+            for selector in event_selectors:
+                try:
+                    event_elements = soup.select(selector)
+                    if event_elements:
+                        print(f"    🔍 Found {len(event_elements)} event elements with selector: {selector}")
+                        
+                        for element in event_elements:
+                            event = self._extract_event_from_browser_element(element, driver)
+                            if event:
+                                # Check for duplicates before adding
+                                if not self._is_duplicate_event(event, events):
+                                    events.append(event)
+                        
+                        if events:
+                            break  # Found events, no need to try other selectors
+                except Exception as e:
+                    continue
+            
+        except Exception as e:
+            print(f"    ⚠️ Error extracting events from browser page: {str(e)}")
+        
+        return events
+    
+    def _extract_event_from_browser_element(self, element, driver):
+        """Extract event information from a browser element"""
+        try:
+            # Get the element text
+            event_text = element.get_text(strip=True)
+            if not event_text or len(event_text) < 5:
+                return None
+            
+            # Try to extract date information from the element or its context
+            event_date = self._extract_event_date_from_element(element, driver)
+            
+            # Try to parse the event text
+            parsed_event = self._parse_event_text(event_text)
+            if parsed_event:
+                # Combine parsed text with extracted date
+                event = {
+                    "title": parsed_event.get("title", event_text),
+                    "time": parsed_event.get("time"),
+                    "date": event_date,
+                    "source": "browser_calendar",
+                    "raw_text": event_text
+                }
+                return event
+            
+        except Exception as e:
+            print(f"      ⚠️ Error extracting event from browser element: {str(e)}")
+        
+        return None
+    
+    def _extract_event_date_from_element(self, element, driver):
+        """Extract the actual event date from the element or its context"""
+        try:
+            # Method 1: Look for date attributes
+            date_attrs = ['data-date', 'data-event-date', 'title', 'aria-label']
+            for attr in date_attrs:
+                date_value = element.get(attr)
+                if date_value:
+                    # Try to parse the date
+                    parsed_date = self._parse_date_string(date_value)
+                    if parsed_date:
+                        return parsed_date
+            
+            # Method 2: Look for parent elements with date information
+            parent = element.parent
+            for _ in range(3):  # Check up to 3 levels up
+                if parent:
+                    # Look for date-related classes or attributes
+                    if parent.get('class'):
+                        for class_name in parent.get('class'):
+                            if 'date' in class_name.lower() or 'day' in class_name.lower():
+                                date_text = parent.get_text(strip=True)
+                                parsed_date = self._parse_date_string(date_text)
+                                if parsed_date:
+                                    return parsed_date
+                    parent = parent.parent
+            
+            # Method 3: Look for the current month/year from the calendar header
+            try:
+                month_year_text = driver.find_element(By.CSS_SELECTOR, ".fc-toolbar-title").text.strip()
+                # Extract month and year from the header
+                parsed_date = self._parse_month_year_string(month_year_text)
+                if parsed_date:
+                    return parsed_date
+            except:
+                pass
+            
+        except Exception as e:
+            print(f"        ⚠️ Error extracting date from element: {str(e)}")
+        
+        return None
+    
+    def _parse_date_string(self, date_string):
+        """Parse various date string formats"""
+        try:
+            if not date_string:
+                return None
+            
+            # Common date patterns
+            date_patterns = [
+                r'(\d{1,2})/(\d{1,2})/(\d{4})',  # MM/DD/YYYY
+                r'(\d{1,2})-(\d{1,2})-(\d{4})',  # MM-DD-YYYY
+                r'(\w+)\s+(\d{1,2}),?\s+(\d{4})',  # Month DD, YYYY
+                r'(\d{1,2})\s+(\w+)\s+(\d{4})',  # DD Month YYYY
+            ]
+            
+            for pattern in date_patterns:
+                match = re.search(pattern, date_string)
+                if match:
+                    if len(match.groups()) == 3:
+                        if pattern == r'(\w+)\s+(\d{1,2}),?\s+(\d{4})':
+                            # Month DD, YYYY format
+                            month_str, day, year = match.groups()
+                            month = self._month_name_to_number(month_str)
+                            if month:
+                                return datetime(int(year), month, int(day))
+                        elif pattern == r'(\d{1,2})\s+(\w+)\s+(\d{4})':
+                            # DD Month YYYY format
+                            day, month_str, year = match.groups()
+                            month = self._month_name_to_number(month_str)
+                            if month:
+                                return datetime(int(year), month, int(day))
+                        else:
+                            # MM/DD/YYYY or MM-DD-YYYY format
+                            month, day, year = match.groups()
+                            return datetime(int(year), int(month), int(day))
+            
+            # Try direct parsing with dateutil
+            try:
+                return parser.parse(date_string, fuzzy=True)
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"          ⚠️ Error parsing date string '{date_string}': {str(e)}")
+        
+        return None
+    
+    def _parse_month_year_string(self, month_year_string):
+        """Parse month year strings like 'August 2025'"""
+        try:
+            if not month_year_string:
+                return None
+            
+            # Pattern for "Month YYYY" format
+            pattern = r'(\w+)\s+(\d{4})'
+            match = re.search(pattern, month_year_string)
+            if match:
+                month_str, year = match.groups()
+                month = self._month_name_to_number(month_str)
+                if month:
+                    # Return first day of the month
+                    return datetime(int(year), month, 1)
+                    
+        except Exception as e:
+            print(f"          ⚠️ Error parsing month year string '{month_year_string}': {str(e)}")
+        
+        return None
+    
+    def _month_name_to_number(self, month_name):
+        """Convert month name to month number"""
+        month_map = {
+            'january': 1, 'jan': 1,
+            'february': 2, 'feb': 2,
+            'march': 3, 'mar': 3,
+            'april': 4, 'apr': 4,
+            'may': 5,
+            'june': 6, 'jun': 6,
+            'july': 7, 'jul': 7,
+            'august': 8, 'aug': 8,
+            'september': 9, 'sep': 9, 'sept': 9,
+            'october': 10, 'oct': 10,
+            'november': 11, 'nov': 11,
+            'december': 12, 'dec': 12
+        }
+        return month_map.get(month_name.lower())
+    
+    def _is_duplicate_event(self, new_event, existing_events):
+        """Check if an event is a duplicate based on title and date"""
+        try:
+            if not new_event or not existing_events:
+                return False
+            
+            new_title = new_event.get('title', '').strip().lower()
+            new_date = new_event.get('date')
+            
+            if not new_title or not new_date:
+                return False
+            
+            for existing_event in existing_events:
+                existing_title = existing_event.get('title', '').strip().lower()
+                existing_date = existing_event.get('date')
+                
+                if (new_title == existing_title and 
+                    new_date and existing_date and 
+                    new_date.date() == existing_date.date()):
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"        ⚠️ Error checking for duplicates: {str(e)}")
+            return False
+    
+    def _try_alternative_browser_navigation(self, driver):
+        """Try alternative methods to navigate to the next month"""
+        try:
+            # Method 1: Look for month/year dropdowns
+            month_selectors = [
+                'select[name*="month"]',
+                'select[id*="month"]',
+                'input[name*="month"]',
+                'input[id*="month"]'
+            ]
+            
+            for selector in month_selectors:
+                try:
+                    month_element = driver.find_element(By.CSS_SELECTOR, selector)
+                    # Try to select next month
+                    current_month = month_element.get_attribute('value') or '1'
+                    next_month = str((int(current_month) % 12) + 1)
+                    month_element.clear()
+                    month_element.send_keys(next_month)
+                    return True
+                except:
+                    continue
+            
+            # Method 2: Look for keyboard navigation
+            try:
+                from selenium.webdriver.common.keys import Keys
+                driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ARROW_RIGHT)
+                time.sleep(1)
+                return True
+            except:
+                pass
+            
+            return False
+            
+        except Exception as e:
+            print(f"      ⚠️ Error in alternative browser navigation: {str(e)}")
+            return False
+    
+    def _parse_event_text(self, event_text):
+        """Parse event text to extract event information"""
+        try:
+            # Simple parsing for now - can be enhanced
+            if not event_text or len(event_text) < 5:
+                return None
+            
+            # Try to extract time and title
+            # Common patterns: "10:30a Sunday Service", "5:15p Prayer Set"
+            time_pattern = r'(\d{1,2}:\d{2}[ap])\s*(.+)'
+            match = re.search(time_pattern, event_text)
+            
+            if match:
+                time_str = match.group(1)
+                title = match.group(2).strip()
+                
+                # Create a basic event structure
+                event = {
+                    'title': title,
+                    'time': time_str,
+                    'date': datetime.now(),  # Will be set by caller
+                    'source': 'browser_navigation'
+                }
+                return event
+            
+            # If no time pattern, just use the text as title
+            event = {
+                'title': event_text,
+                'time': 'TBD',
+                'date': datetime.now(),  # Will be set by caller
+                'source': 'browser_navigation'
+            }
+            return event
+            
+        except Exception as e:
+            print(f"      ⚠️ Error parsing event text '{event_text}': {str(e)}")
+            return None
+    
     def _try_alternative_calendar_navigation(self):
         """Try alternative approaches to access calendar data"""
         events = []
@@ -2820,6 +3275,89 @@ class SubsplashSyncService:
             
         except Exception as e:
             print(f"❌ Error parsing iCal calendar data: {str(e)}")
+            return events
+
+    def _simulate_browser_behavior(self, url):
+        """Simulate browser behavior to trigger dynamic loading"""
+        events = []
+        
+        try:
+            print("          🔍 Simulating browser behavior...")
+            
+            # Try different user agent strings
+            user_agents = [
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            ]
+            
+            for user_agent in user_agents:
+                try:
+                    headers = {
+                        'User-Agent': user_agent,
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Connection': 'keep-alive',
+                        'Upgrade-Insecure-Requests': '1',
+                        'Sec-Fetch-Dest': 'document',
+                        'Sec-Fetch-Mode': 'navigate',
+                        'Sec-Fetch-Site': 'none',
+                        'Cache-Control': 'max-age=0'
+                    }
+                    
+                    response = requests.get(url, headers=headers, timeout=30)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'html.parser')
+                        
+                        # Try to extract events with this user agent
+                        page_events = self._extract_events_from_page(soup)
+                        if page_events:
+                            events.extend(page_events)
+                            print(f"          ✅ User agent {user_agent[:20]}...: Found {len(page_events)} events")
+                            break
+                        else:
+                            print(f"          ⚠️ User agent {user_agent[:20]}...: No events found")
+                    else:
+                        print(f"          ❌ HTTP {response.status_code} with user agent {user_agent[:20]}...")
+                        
+                except Exception as e:
+                    print(f"          ⚠️ Error with user agent {user_agent[:20]}...: {str(e)}")
+                    continue
+            
+            # Try to simulate scrolling/loading more content
+            if not events:
+                print("          🔍 Trying to simulate scrolling/loading more...")
+                try:
+                    # Try different scroll parameters
+                    scroll_urls = [
+                        url + "&scroll=1",
+                        url + "&load_more=1",
+                        url + "&page=2",
+                        url + "&offset=20",
+                        url + "&start=20"
+                    ]
+                    
+                    for scroll_url in scroll_urls:
+                        try:
+                            response = requests.get(scroll_url, headers=headers, timeout=30)
+                            if response.status_code == 200:
+                                soup = BeautifulSoup(response.content, 'html.parser')
+                                scroll_events = self._extract_events_from_page(soup)
+                                if scroll_events:
+                                    events.extend(scroll_events)
+                                    print(f"          ✅ Scroll URL {scroll_url.split('?')[-1]}: Found {len(scroll_events)} events")
+                                    break
+                        except Exception as e:
+                            continue
+                            
+                except Exception as e:
+                    print(f"          ⚠️ Error simulating scrolling: {str(e)}")
+            
+            return events
+            
+        except Exception as e:
+            print(f"❌ Error simulating browser behavior: {str(e)}")
             return events
 
 def main():
