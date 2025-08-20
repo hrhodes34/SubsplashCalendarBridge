@@ -8,8 +8,7 @@ import os
 import json
 import requests
 from datetime import datetime, timedelta
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -26,26 +25,15 @@ class SubsplashSyncService:
         self.credentials = None
         
     def authenticate_google(self):
-        """Authenticate with Google Calendar API"""
+        """Authenticate with Google Calendar API using Service Account"""
         try:
-            # Load credentials from file created by GitHub Actions
+            # Load service account credentials from file created by GitHub Actions
             if os.path.exists('credentials.json'):
-                with open('credentials.json', 'r') as f:
-                    creds_data = json.load(f)
-                
-                # Create credentials object
-                self.credentials = Credentials(
-                    token=creds_data.get('access_token'),
-                    refresh_token=creds_data.get('refresh_token'),
-                    token_uri=creds_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
-                    client_id=creds_data.get('client_id'),
-                    client_secret=creds_data.get('client_secret'),
+                # For Service Accounts, we use service_account.Credentials
+                self.credentials = service_account.Credentials.from_service_account_file(
+                    'credentials.json',
                     scopes=SCOPES
                 )
-                
-                # Refresh if expired
-                if self.credentials.expired and self.credentials.refresh_token:
-                    self.credentials.refresh(Request())
                 
                 # Build service
                 self.calendar_service = build('calendar', 'v3', credentials=self.credentials)
@@ -69,7 +57,7 @@ class SubsplashSyncService:
             # TODO: Implement actual Subsplash scraping logic
             # For now, returning sample events for testing
             
-            print("   Scraping Subsplash events...")
+            print("�� Scraping Subsplash events...")
             
             # Sample events - replace this with actual scraping logic
             sample_events = [
@@ -217,8 +205,8 @@ class SubsplashSyncService:
     
     def run_sync(self):
         """Main sync method"""
-        print("   Starting Subsplash to Google Calendar sync...")
-        print(f"   Target Calendar ID: {GOOGLE_CALENDAR_ID}")
+        print("�� Starting Subsplash to Google Calendar sync...")
+        print(f"�� Target Calendar ID: {GOOGLE_CALENDAR_ID}")
         print(f"🔗 Subsplash URL: {SUBSPLASH_EMBED_URL}")
         
         # Authenticate with Google
