@@ -68,9 +68,33 @@ class SubsplashSyncService:
                 subsplash_url.replace("?embed", "?view=year"),
                 subsplash_url.replace("?embed", "&limit=100"),
                 subsplash_url.replace("?embed", "&limit=200"),
+                subsplash_url.replace("?embed", "&limit=500"),
                 subsplash_url.replace("?embed", "&show_all=1"),
                 subsplash_url.replace("?embed", "&include_past=1"),
-                subsplash_url.replace("?embed", "&include_future=1")
+                subsplash_url.replace("?embed", "&include_future=1"),
+                subsplash_url.replace("?embed", "&future_events=1"),
+                subsplash_url.replace("?embed", "&all_events=1"),
+                subsplash_url.replace("?embed", "&range=all"),
+                subsplash_url.replace("?embed", "&range=future"),
+                subsplash_url.replace("?embed", "&range=year"),
+                subsplash_url.replace("?embed", "&range=6months"),
+                subsplash_url.replace("?embed", "&range=12months"),
+                subsplash_url.replace("?embed", "&months_ahead=6"),
+                subsplash_url.replace("?embed", "&months_ahead=12"),
+                subsplash_url.replace("?embed", "&months_ahead=24"),
+                subsplash_url.replace("?embed", "&start_date=today"),
+                subsplash_url.replace("?embed", "&end_date=2026-12-31"),
+                subsplash_url.replace("?embed", "&end_date=2027-12-31"),
+                subsplash_url.replace("?embed", "&end_date=2028-12-31"),
+                subsplash_url.replace("?embed", "&timeframe=all"),
+                subsplash_url.replace("?embed", "&timeframe=future"),
+                subsplash_url.replace("?embed", "&timeframe=year"),
+                subsplash_url.replace("?embed", "&timeframe=extended"),
+                subsplash_url.replace("?embed", "&load_more=1"),
+                subsplash_url.replace("?embed", "&expand=1"),
+                subsplash_url.replace("?embed", "&full=1"),
+                subsplash_url.replace("?embed", "&complete=1"),
+                subsplash_url.replace("?embed", "&all=1")
             ]
             
             all_events = []
@@ -95,8 +119,25 @@ class SubsplashSyncService:
                 all_events.extend(api_events)
                 print(f"✅ API endpoints: Found {len(api_events)} events")
             
+            # Try to simulate user interactions to load more events
+            print("🔍 Trying to load more events through user simulation...")
+            interaction_events = self._try_user_interactions(subsplash_url)
+            if interaction_events:
+                all_events.extend(interaction_events)
+                print(f"✅ User interactions: Found {len(interaction_events)} events")
+            
+            # Try to find calendar data in different file formats
+            print("🔍 Looking for calendar data in different formats...")
+            format_events = self._try_different_formats(subsplash_url)
+            if format_events:
+                all_events.extend(format_events)
+                print(f"✅ Different formats: Found {len(format_events)} events")
+            
             # Remove duplicates based on title and start time
             unique_events = self._deduplicate_events(all_events)
+            
+            # Analyze the events found
+            self._analyze_event_distribution(unique_events)
             
             print(f"✅ Found {len(unique_events)} unique events from all sources")
             return unique_events
@@ -190,75 +231,83 @@ class SubsplashSyncService:
             print(f"❌ Error scraping URL {url}: {str(e)}")
             return []
     
+    def _save_html_for_debug(self, content, filename):
+        """Save HTML content for debugging purposes (only in development mode)"""
+        try:
+            # Only save debug files if we're in development mode
+            if os.environ.get('SAVE_DEBUG_FILES', 'false').lower() == 'true':
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(content.decode('utf-8', errors='ignore'))
+                print(f"💾 Saved HTML debug file: {filename}")
+            else:
+                print(f"💾 Debug file saving disabled (set SAVE_DEBUG_FILES=true to enable)")
+        except Exception as e:
+            print(f"⚠️ Could not save debug HTML: {str(e)}")
+    
     def _analyze_page_structure(self, soup):
         """Analyze the page structure to understand how events are organized"""
         try:
-            print("🔍 Analyzing page structure...")
-            
-            # Look for common container patterns
-            containers = soup.find_all(['div', 'section', 'article', 'main'], class_=True)
-            class_counts = {}
-            
-            for container in containers:
-                classes = container.get('class', [])
-                for cls in classes:
-                    if cls not in class_counts:
-                        class_counts[cls] = 0
-                    class_counts[cls] += 1
-            
-            # Show most common classes
-            sorted_classes = sorted(class_counts.items(), key=lambda x: x[1], reverse=True)
-            print("📊 Most common CSS classes:")
-            for cls, count in sorted_classes[:20]:
-                print(f"   {cls}: {count} instances")
-            
-            # Look for text that might contain event information
-            all_text = soup.get_text()
-            lines = [line.strip() for line in all_text.split('\n') if line.strip()]
-            
-            # Look for lines that might be event titles
-            potential_events = []
-            for line in lines:
-                if len(line) > 10 and len(line) < 100:
-                    # Check if it looks like an event title
-                    if not any(word in line.lower() for word in ['am', 'pm', 'edt', 'est', 'from', 'to', 'august', 'september', 'october', 'november', 'december']):
-                        if line[0].isupper():  # Starts with capital letter
-                            potential_events.append(line)
-            
-            print(f"🔍 Found {len(potential_events)} potential event titles")
-            for i, event in enumerate(potential_events[:10]):  # Show first 10
-                print(f"   {i+1}. {event}")
-            
-            # Look for date patterns in the text
-            import re
-            date_patterns = [
-                r'[A-Za-z]+ \d{1,2},? \d{4}',
-                r'[A-Za-z]+ \d{1,2}',
-                r'\d{1,2}:\d{2}[ap]m',
-                r'from \d{1,2}:\d{2}[ap]m',
-                r'to \d{1,2}:\d{2}[ap]m'
-            ]
-            
-            all_dates = []
-            for pattern in date_patterns:
-                matches = re.findall(pattern, all_text)
-                all_dates.extend(matches)
-            
-            print(f"🔍 Found {len(all_dates)} date/time patterns")
-            for i, date in enumerate(all_dates[:10]):  # Show first 10
-                print(f"   {i+1}. {date}")
+            # Only do detailed analysis in development mode
+            if os.environ.get('VERBOSE_DEBUG', 'false').lower() == 'true':
+                print("🔍 Analyzing page structure...")
+                
+                # Look for common container patterns
+                containers = soup.find_all(['div', 'section', 'article', 'main'], class_=True)
+                class_counts = {}
+                
+                for container in containers:
+                    classes = container.get('class', [])
+                    for cls in classes:
+                        if cls not in class_counts:
+                            class_counts[cls] = 0
+                        class_counts[cls] += 1
+                
+                # Show most common classes
+                sorted_classes = sorted(class_counts.items(), key=lambda x: x[1], reverse=True)
+                print("📊 Most common CSS classes:")
+                for cls, count in sorted_classes[:20]:
+                    print(f"   {cls}: {count} instances")
+                
+                # Look for text that might contain event information
+                all_text = soup.get_text()
+                lines = [line.strip() for line in all_text.split('\n') if line.strip()]
+                
+                # Look for lines that might be event titles
+                potential_events = []
+                for line in lines:
+                    if len(line) > 10 and len(line) < 100:
+                        # Check if it looks like an event title
+                        if not any(word in line.lower() for word in ['am', 'pm', 'edt', 'est', 'from', 'to', 'august', 'september', 'october', 'november', 'december']):
+                            if line[0].isupper():  # Starts with capital letter
+                                potential_events.append(line)
+                
+                print(f"🔍 Found {len(potential_events)} potential event titles")
+                for i, event in enumerate(potential_events[:10]):  # Show first 10
+                    print(f"   {i+1}. {event}")
+                
+                # Look for date patterns in the text
+                import re
+                date_patterns = [
+                    r'[A-Za-z]+ \d{1,2},? \d{4}',
+                    r'[A-Za-z]+ \d{1,2}',
+                    r'\d{1,2}:\d{2}[ap]m',
+                    r'from \d{1,2}:\d{2}[ap]m',
+                    r'to \d{1,2}:\d{2}[ap]m'
+                ]
+                
+                all_dates = []
+                for pattern in date_patterns:
+                    matches = re.findall(pattern, all_text)
+                    all_dates.extend(matches)
+                
+                print(f"🔍 Found {len(all_dates)} date/time patterns")
+                for i, date in enumerate(all_dates[:10]):  # Show first 10
+                    print(f"   {i+1}. {date}")
+            else:
+                print("🔍 Page structure analysis disabled (set VERBOSE_DEBUG=true to enable)")
                 
         except Exception as e:
             print(f"⚠️ Error analyzing page structure: {str(e)}")
-    
-    def _save_html_for_debug(self, content, filename):
-        """Save HTML content for debugging purposes"""
-        try:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(content.decode('utf-8', errors='ignore'))
-            print(f"💾 Saved HTML debug file: {filename}")
-        except Exception as e:
-            print(f"⚠️ Could not save debug HTML: {str(e)}")
     
     def _handle_pagination(self, base_url, headers):
         """Handle potential pagination in Subsplash calendar"""
@@ -503,9 +552,24 @@ class SubsplashSyncService:
                         r'window\.__INITIAL_STATE__\s*=\s*({.*?});',
                         r'window\.events\s*=\s*(\[.*?\]);',
                         r'window\.calendar\s*=\s*({.*?});',
+                        r'window\.calendarData\s*=\s*({.*?});',
+                        r'window\.eventData\s*=\s*({.*?});',
+                        r'window\.subsplashData\s*=\s*({.*?});',
                         r'data\s*:\s*(\[.*?\]),',
                         r'events\s*:\s*(\[.*?\]),',
-                        r'calendar\s*:\s*({.*?}),'
+                        r'calendar\s*:\s*({.*?}),',
+                        r'calendarData\s*:\s*({.*?}),',
+                        r'eventData\s*:\s*({.*?}),',
+                        r'subsplashData\s*:\s*({.*?}),',
+                        r'var\s+events\s*=\s*(\[.*?\]);',
+                        r'var\s+calendar\s*=\s*({.*?});',
+                        r'var\s+calendarData\s*=\s*({.*?});',
+                        r'const\s+events\s*=\s*(\[.*?\]);',
+                        r'const\s+calendar\s*=\s*({.*?});',
+                        r'const\s+calendarData\s*=\s*({.*?});',
+                        r'let\s+events\s*=\s*(\[.*?\]);',
+                        r'let\s+calendar\s*=\s*({.*?});',
+                        r'let\s+calendarData\s*=\s*({.*?});'
                     ]
                     
                     for pattern in json_patterns:
@@ -513,6 +577,33 @@ class SubsplashSyncService:
                         for match in matches:
                             try:
                                 data = json.loads(match)
+                                json_events = self._parse_json_events(data)
+                                if json_events:
+                                    events.extend(json_events)
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    # Also look for calendar data in different formats
+                    calendar_patterns = [
+                        r'calendarData\s*:\s*({.*?})',
+                        r'eventList\s*:\s*(\[.*?\])',
+                        r'futureEvents\s*:\s*(\[.*?\])',
+                        r'upcomingEvents\s*:\s*(\[.*?\])',
+                        r'extendedEvents\s*:\s*(\[.*?\])',
+                        r'fullCalendar\s*:\s*({.*?})',
+                        r'calendarEvents\s*:\s*(\[.*?\])'
+                    ]
+                    
+                    for pattern in calendar_patterns:
+                        matches = re.findall(pattern, script_content, re.DOTALL)
+                        for match in matches:
+                            try:
+                                # Try to clean up the match and parse as JSON
+                                cleaned_match = match.strip()
+                                if cleaned_match.endswith(','):
+                                    cleaned_match = cleaned_match[:-1]
+                                
+                                data = json.loads(cleaned_match)
                                 json_events = self._parse_json_events(data)
                                 if json_events:
                                     events.extend(json_events)
@@ -660,6 +751,57 @@ class SubsplashSyncService:
             print(f"⚠️ Error extracting events from text: {str(e)}")
         
         return events
+    
+    def _analyze_event_distribution(self, events):
+        """Analyze and display information about the events found"""
+        try:
+            if not events:
+                print("📊 No events to analyze")
+                return
+            
+            print(f"\n📊 Event Analysis:")
+            print(f"   Total events: {len(events)}")
+            
+            # Get date range
+            start_dates = [event['start'] for event in events if 'start' in event and event['start']]
+            end_dates = [event['end'] for event in events if 'end' in event and event['end']]
+            
+            if start_dates:
+                earliest = min(start_dates)
+                latest = max(start_dates)
+                
+                print(f"   Date range: {earliest.strftime('%B %d, %Y')} to {latest.strftime('%B %d, %Y')}")
+                
+                # Calculate months ahead
+                from datetime import datetime
+                now = datetime.now()
+                months_ahead = ((latest.year - now.year) * 12) + (latest.month - now.month)
+                print(f"   Months ahead: {months_ahead}")
+                
+                # Group events by month
+                monthly_counts = {}
+                for event in events:
+                    if 'start' in event and event['start']:
+                        month_key = event['start'].strftime('%B %Y')
+                        monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
+                
+                print(f"   Events by month:")
+                sorted_months = sorted(monthly_counts.items(), key=lambda x: datetime.strptime(x[0], '%B %Y'))
+                for month, count in sorted_months:
+                    print(f"     {month}: {count} events")
+            
+            # Show some sample events
+            print(f"\n📅 Sample events:")
+            sorted_events = sorted(events, key=lambda x: x['start'] if 'start' in x and x['start'] else datetime.min)
+            for i, event in enumerate(sorted_events[:5], 1):
+                if 'start' in event and event['start']:
+                    print(f"   {i}. {event['title']} - {event['start'].strftime('%B %d, %Y')}")
+            
+            if len(events) > 5:
+                print(f"   ... and {len(events) - 5} more events")
+                
+        except Exception as e:
+            print(f"⚠️ Error analyzing event distribution: {str(e)}")
     
     def _extract_events_from_meta(self, soup):
         """Extract events from meta tags and data attributes"""
@@ -821,6 +963,437 @@ class SubsplashSyncService:
                     
         except Exception as e:
             print(f"⚠️ Error trying API endpoints: {str(e)}")
+        
+        return events
+    
+    def _try_user_interactions(self, base_url):
+        """Try to simulate user interactions to load more events"""
+        events = []
+        
+        try:
+            # Try different interaction patterns
+            interaction_patterns = [
+                # Try to load more events
+                f"{base_url}&action=load_more",
+                f"{base_url}&action=expand",
+                f"{base_url}&action=show_all",
+                f"{base_url}&action=load_future",
+                f"{base_url}&action=load_extended",
+                
+                # Try different calendar navigation
+                f"{base_url}&nav=next_month",
+                f"{base_url}&nav=next_quarter",
+                f"{base_url}&nav=next_year",
+                f"{base_url}&nav=extended",
+                
+                # Try to trigger lazy loading
+                f"{base_url}&lazy_load=1",
+                f"{base_url}&infinite_scroll=1",
+                f"{base_url}&auto_load=1",
+                
+                # Try different event loading strategies
+                f"{base_url}&load_strategy=all",
+                f"{base_url}&load_strategy=future",
+                f"{base_url}&load_strategy=extended",
+                
+                # Try to force full calendar load
+                f"{base_url}&force_load=1",
+                f"{base_url}&preload=1",
+                f"{base_url}&cache=1"
+            ]
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Referer': base_url,
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+            
+            for pattern in interaction_patterns:
+                try:
+                    print(f"🔍 Trying interaction pattern: {pattern}")
+                    response = requests.get(pattern, headers=headers, timeout=30)
+                    
+                    if response.status_code == 200:
+                        # Parse the response
+                        soup = BeautifulSoup(response.content, 'html.parser')
+                        
+                        # Try to extract events from this response
+                        interaction_events = self._extract_events_from_page(soup)
+                        
+                        if interaction_events:
+                            events.extend(interaction_events)
+                            print(f"✅ Interaction {pattern}: Found {len(interaction_events)} events")
+                            
+                            # If we found events, try to get even more
+                            if len(interaction_events) > 0:
+                                # Try to go even further into the future
+                                extended_events = self._try_extended_future_loading(pattern, headers)
+                                if extended_events:
+                                    events.extend(extended_events)
+                                    print(f"✅ Extended loading: Found {len(extended_events)} more events")
+                        else:
+                            print(f"⚠️ Interaction {pattern}: No events found")
+                    else:
+                        print(f"⚠️ Interaction {pattern}: HTTP {response.status_code}")
+                        
+                except Exception as e:
+                    print(f"⚠️ Error with interaction {pattern}: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            print(f"⚠️ Error trying user interactions: {str(e)}")
+        
+        return events
+    
+    def _try_extended_future_loading(self, base_url, headers):
+        """Try to load events even further into the future"""
+        events = []
+        
+        try:
+            # Try to go even further into the future
+            extended_patterns = [
+                f"{base_url}&months_ahead=36",
+                f"{base_url}&months_ahead=48",
+                f"{base_url}&months_ahead=60",
+                f"{base_url}&end_date=2030-12-31",
+                f"{base_url}&end_date=2035-12-31",
+                f"{base_url}&range=extended",
+                f"{base_url}&range=unlimited",
+                f"{base_url}&load_all_future=1",
+                f"{base_url}&future_limit=none"
+            ]
+            
+            for pattern in extended_patterns:
+                try:
+                    print(f"🔍 Trying extended future loading: {pattern}")
+                    response = requests.get(pattern, headers=headers, timeout=30)
+                    
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'html.parser')
+                        extended_events = self._extract_events_from_page(soup)
+                        
+                        if extended_events:
+                            events.extend(extended_events)
+                            print(f"✅ Extended {pattern}: Found {len(extended_events)} events")
+                        else:
+                            print(f"⚠️ Extended {pattern}: No additional events")
+                    else:
+                        print(f"⚠️ Extended {pattern}: HTTP {response.status_code}")
+                        
+                except Exception as e:
+                    print(f"⚠️ Error with extended loading {pattern}: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            print(f"⚠️ Error with extended future loading: {str(e)}")
+        
+        return events
+    
+    def _try_different_formats(self, base_url):
+        """Try to find calendar data in different file formats and sources"""
+        events = []
+        
+        try:
+            # Try different file extensions and formats
+            format_patterns = [
+                # JSON formats
+                f"{base_url.replace('?embed', '')}.json",
+                f"{base_url.replace('?embed', '')}/events.json",
+                f"{base_url.replace('?embed', '')}/calendar.json",
+                f"{base_url.replace('?embed', '')}/data.json",
+                f"{base_url.replace('?embed', '')}/feed.json",
+                
+                # XML formats
+                f"{base_url.replace('?embed', '')}.xml",
+                f"{base_url.replace('?embed', '')}/events.xml",
+                f"{base_url.replace('?embed', '')}/calendar.xml",
+                f"{base_url.replace('?embed', '')}/feed.xml",
+                
+                # RSS feeds
+                f"{base_url.replace('?embed', '')}/rss",
+                f"{base_url.replace('?embed', '')}/feed",
+                f"{base_url.replace('?embed', '')}/rss.xml",
+                f"{base_url.replace('?embed', '')}/feed.xml",
+                
+                # ICS calendar format
+                f"{base_url.replace('?embed', '')}.ics",
+                f"{base_url.replace('?embed', '')}/calendar.ics",
+                f"{base_url.replace('?embed', '')}/events.ics",
+                
+                # CSV format
+                f"{base_url.replace('?embed', '')}.csv",
+                f"{base_url.replace('?embed', '')}/events.csv",
+                f"{base_url.replace('?embed', '')}/calendar.csv"
+            ]
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json, application/xml, text/calendar, text/csv, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Referer': base_url
+            }
+            
+            for format_url in format_patterns:
+                try:
+                    print(f"🔍 Trying format: {format_url}")
+                    response = requests.get(format_url, headers=headers, timeout=30)
+                    
+                    if response.status_code == 200:
+                        content_type = response.headers.get('content-type', '').lower()
+                        
+                        if 'json' in content_type:
+                            # Parse JSON
+                            try:
+                                data = response.json()
+                                json_events = self._parse_json_events(data)
+                                if json_events:
+                                    events.extend(json_events)
+                                    print(f"✅ JSON format {format_url}: Found {len(json_events)} events")
+                            except json.JSONDecodeError:
+                                print(f"⚠️ JSON format {format_url}: Invalid JSON")
+                                
+                        elif 'xml' in content_type or format_url.endswith('.xml'):
+                            # Parse XML
+                            try:
+                                xml_events = self._parse_xml_events(response.content)
+                                if xml_events:
+                                    events.extend(xml_events)
+                                    print(f"✅ XML format {format_url}: Found {len(xml_events)} events")
+                            except Exception as e:
+                                print(f"⚠️ XML format {format_url}: Error parsing - {str(e)}")
+                                
+                        elif 'calendar' in content_type or format_url.endswith('.ics'):
+                            # Parse ICS calendar
+                            try:
+                                ics_events = self._parse_ics_events(response.content)
+                                if ics_events:
+                                    events.extend(ics_events)
+                                    print(f"✅ ICS format {format_url}: Found {len(ics_events)} events")
+                            except Exception as e:
+                                print(f"⚠️ ICS format {format_url}: Error parsing - {str(e)}")
+                                
+                        elif 'csv' in content_type or format_url.endswith('.csv'):
+                            # Parse CSV
+                            try:
+                                csv_events = self._parse_csv_events(response.content)
+                                if csv_events:
+                                    events.extend(csv_events)
+                                    print(f"✅ CSV format {format_url}: Found {len(csv_events)} events")
+                            except Exception as e:
+                                print(f"⚠️ CSV format {format_url}: Error parsing - {str(e)}")
+                                
+                        else:
+                            # Try to parse as text and look for event patterns
+                            try:
+                                text_events = self._parse_text_events(response.content)
+                                if text_events:
+                                    events.extend(text_events)
+                                    print(f"✅ Text format {format_url}: Found {len(text_events)} events")
+                            except Exception as e:
+                                print(f"⚠️ Text format {format_url}: Error parsing - {str(e)}")
+                    else:
+                        print(f"⚠️ Format {format_url}: HTTP {response.status_code}")
+                        
+                except Exception as e:
+                    print(f"⚠️ Error with format {format_url}: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            print(f"⚠️ Error trying different formats: {str(e)}")
+        
+        return events
+    
+    def _parse_xml_events(self, content):
+        """Parse events from XML content"""
+        events = []
+        
+        try:
+            soup = BeautifulSoup(content, 'xml')
+            
+            # Look for common XML event patterns
+            event_tags = soup.find_all(['event', 'item', 'entry', 'calendar-event'])
+            
+            for tag in event_tags:
+                try:
+                    # Extract event data from XML tags
+                    title = tag.find(['title', 'name', 'summary'])
+                    title = title.get_text() if title else "Event"
+                    
+                    # Look for date/time information
+                    start_date = tag.find(['start', 'start_date', 'date', 'datetime'])
+                    end_date = tag.find(['end', 'end_date', 'end_datetime'])
+                    
+                    if start_date:
+                        start_text = start_date.get_text()
+                        parsed_datetime = self._parse_subsplash_datetime(start_text)
+                        
+                        if parsed_datetime:
+                            start_time, end_time = parsed_datetime
+                            
+                            # Get description
+                            description = ""
+                            desc_tag = tag.find(['description', 'summary', 'content'])
+                            if desc_tag:
+                                description = desc_tag.get_text()
+                            
+                            event = {
+                                'title': title,
+                                'start': start_time,
+                                'end': end_time,
+                                'description': description,
+                                'location': 'Antioch Boone',
+                                'all_day': False
+                            }
+                            
+                            events.append(event)
+                            
+                except Exception as e:
+                    print(f"⚠️ Error parsing XML event: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            print(f"⚠️ Error parsing XML content: {str(e)}")
+        
+        return events
+    
+    def _parse_ics_events(self, content):
+        """Parse events from ICS calendar content"""
+        events = []
+        
+        try:
+            content_str = content.decode('utf-8', errors='ignore')
+            lines = content_str.split('\n')
+            
+            current_event = {}
+            in_event = False
+            
+            for line in lines:
+                line = line.strip()
+                
+                if line == 'BEGIN:VEVENT':
+                    in_event = True
+                    current_event = {}
+                elif line == 'END:VEVENT':
+                    in_event = False
+                    if current_event.get('title') and current_event.get('start'):
+                        events.append(current_event)
+                elif in_event and ':' in line:
+                    key, value = line.split(':', 1)
+                    
+                    if key == 'SUMMARY':
+                        current_event['title'] = value
+                    elif key == 'DTSTART':
+                        # Parse ICS date format
+                        try:
+                            from dateutil import parser
+                            start_time = parser.parse(value)
+                            current_event['start'] = start_time
+                        except:
+                            pass
+                    elif key == 'DTEND':
+                        try:
+                            from dateutil import parser
+                            end_time = parser.parse(value)
+                            current_event['end'] = end_time
+                        except:
+                            pass
+                    elif key == 'DESCRIPTION':
+                        current_event['description'] = value
+                        
+        except Exception as e:
+            print(f"⚠️ Error parsing ICS content: {str(e)}")
+        
+        return events
+    
+    def _parse_csv_events(self, content):
+        """Parse events from CSV content"""
+        events = []
+        
+        try:
+            import csv
+            from io import StringIO
+            
+            content_str = content.decode('utf-8', errors='ignore')
+            csv_file = StringIO(content_str)
+            reader = csv.DictReader(csv_file)
+            
+            for row in reader:
+                try:
+                    # Look for common CSV column names
+                    title = row.get('title') or row.get('name') or row.get('summary') or row.get('event')
+                    start_date = row.get('start') or row.get('start_date') or row.get('date') or row.get('datetime')
+                    
+                    if title and start_date:
+                        parsed_datetime = self._parse_subsplash_datetime(start_date)
+                        
+                        if parsed_datetime:
+                            start_time, end_time = parsed_datetime
+                            
+                            description = row.get('description') or row.get('summary') or row.get('details') or ""
+                            
+                            event = {
+                                'title': title,
+                                'start': start_time,
+                                'end': end_time,
+                                'description': description,
+                                'location': 'Antioch Boone',
+                                'all_day': False
+                            }
+                            
+                            events.append(event)
+                            
+                except Exception as e:
+                    print(f"⚠️ Error parsing CSV row: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            print(f"⚠️ Error parsing CSV content: {str(e)}")
+        
+        return events
+    
+    def _parse_text_events(self, content):
+        """Parse events from plain text content"""
+        events = []
+        
+        try:
+            content_str = content.decode('utf-8', errors='ignore')
+            
+            # Look for event patterns in the text
+            event_patterns = [
+                r'([A-Z][^.!?]*?)([A-Za-z]+ \d{1,2},? \d{4}.*?)(?=[A-Z][^.!?]*?[A-Za-z]+ \d{1,2}|$)',
+                r'([A-Z][^.!?]*?)([A-Za-z]+ \d{1,2}.*?)(?=[A-Z][^.!?]*?[A-Za-z]+ \d{1,2}|$)'
+            ]
+            
+            for pattern in event_patterns:
+                matches = re.findall(pattern, content_str, re.DOTALL)
+                for match in matches:
+                    if len(match) >= 2:
+                        title = match[0].strip()
+                        date_time_text = match[1].strip()
+                        
+                        if len(title) > 5 and len(title) < 100:
+                            parsed_datetime = self._parse_subsplash_datetime(date_time_text)
+                            if parsed_datetime:
+                                start_time, end_time = parsed_datetime
+                                
+                                event = {
+                                    'title': title,
+                                    'start': start_time,
+                                    'end': end_time,
+                                    'description': date_time_text,
+                                    'location': 'Antioch Boone',
+                                    'all_day': False
+                                }
+                                
+                                events.append(event)
+                                
+        except Exception as e:
+            print(f"⚠️ Error parsing text content: {str(e)}")
         
         return events
     
@@ -1130,19 +1703,29 @@ class SubsplashSyncService:
             return False
     
     def save_status(self, success, message):
-        """Save sync status for GitHub Actions to commit"""
-        status = {
-            'last_sync': datetime.now().isoformat(),
-            'success': success,
-            'message': message,
-            'calendar_id': GOOGLE_CALENDAR_ID,
-            'subsplash_url': SUBSPLASH_EMBED_URL
-        }
-        
-        with open('sync_status.json', 'w') as f:
-            json.dump(status, f, indent=2)
-        
-        print(f"📝 Status saved: {message}")
+        """Save sync status for GitHub Actions to commit (optional)"""
+        try:
+            # Only save status file if explicitly enabled
+            if os.environ.get('SAVE_STATUS_FILE', 'false').lower() == 'true':
+                status = {
+                    'last_sync': datetime.now().isoformat(),
+                    'success': success,
+                    'message': message,
+                    'calendar_id': GOOGLE_CALENDAR_ID,
+                    'subsplash_url': SUBSPLASH_EMBED_URL
+                }
+                
+                with open('sync_status.json', 'w') as f:
+                    json.dump(status, f, indent=2)
+                
+                print(f"📝 Status saved: {message}")
+            else:
+                print(f"📝 Status file saving disabled (set SAVE_STATUS_FILE=true to enable)")
+                print(f"📝 Sync result: {message}")
+                
+        except Exception as e:
+            print(f"⚠️ Could not save status file: {str(e)}")
+            print(f"📝 Sync result: {message}")
     
     def run_sync(self):
         """Main sync method"""
