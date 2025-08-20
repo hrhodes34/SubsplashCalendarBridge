@@ -277,13 +277,40 @@ class SubsplashCalendarSync:
 
         # Wait for the calendar to fully load
         try:
+            logger.info(f"Waiting for calendar container with timeout: {self.browser_wait_time}s")
             WebDriverWait(self.browser, self.browser_wait_time).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, '.fc-view-container'))
             )
+            logger.info("✅ Calendar container found")
             # Additional wait for FullCalendar to render events
+            logger.info("Waiting 3 seconds for FullCalendar to render events...")
             time.sleep(3)
         except TimeoutException:
-            logger.warning("Calendar container not found, proceeding anyway...")
+            logger.warning("❌ Calendar container not found, proceeding anyway...")
+            
+            # Debug: Let's see what's actually on the page
+            logger.info("🔍 DEBUG: Analyzing page structure...")
+            try:
+                page_title = self.browser.title
+                logger.info(f"Page title: {page_title}")
+                
+                # Look for any calendar-related elements
+                calendar_elements = self.browser.find_elements(By.CSS_SELECTOR, '[class*="calendar"], [class*="fc"], [class*="event"]')
+                logger.info(f"Found {len(calendar_elements)} elements with calendar/event-related classes")
+                
+                # Check for common FullCalendar elements
+                fc_elements = self.browser.find_elements(By.CSS_SELECTOR, '.fc-toolbar, .fc-view, .fc-day, .fc-event')
+                logger.info(f"Found {len(fc_elements)} FullCalendar elements")
+                
+                # Log the first few elements for debugging
+                for i, elem in enumerate(fc_elements[:5]):
+                    try:
+                        logger.info(f"FC Element {i}: {elem.tag_name} - class='{elem.get_attribute('class')}' - text='{elem.text[:100]}'")
+                    except:
+                        logger.info(f"FC Element {i}: Error getting info")
+                        
+            except Exception as debug_e:
+                logger.error(f"Error during page analysis: {debug_e}")
 
         # Try multiple FullCalendar selectors in order of specificity
         event_selectors = [
@@ -296,17 +323,110 @@ class SubsplashCalendarSync:
         event_elements = []
         used_selector = None
         
+        # First try: Standard FullCalendar selectors
+        logger.info("🔍 STEP 1: Trying standard FullCalendar selectors...")
         for selector in event_selectors:
             try:
+                logger.info(f"  Trying selector: '{selector}'")
                 elements = self.browser.find_elements(By.CSS_SELECTOR, selector)
+                logger.info(f"  Found {len(elements)} elements with selector '{selector}'")
+                
                 if elements:
                     event_elements = elements
                     used_selector = selector
-                    logger.info(f"Found {len(elements)} events using selector: {selector}")
+                    logger.info(f"✅ SUCCESS: Found {len(elements)} events using selector: {selector}")
+                    
+                    # Additional debugging for GitHub Actions
+                    if os.getenv('GITHUB_ACTIONS') == 'true':
+                        logger.info(f"🔍 GitHub Actions: Detailed analysis of {len(elements)} elements")
+                        # Log first few elements for debugging
+                        for i, elem in enumerate(elements[:5]):
+                            try:
+                                title_text = elem.find_elements(By.CSS_SELECTOR, 'div.fc-event-title')
+                                title = title_text[0].text.strip() if title_text else "NO_TITLE"
+                                classes = elem.get_attribute('class') or "NO_CLASS"
+                                tag = elem.tag_name
+                                text_preview = elem.text[:100] if elem.text else "NO_TEXT"
+                                logger.info(f"  Element {i}: Tag='{tag}' Class='{classes}' Title='{title}' Text='{text_preview}'")
+                            except Exception as debug_e:
+                                logger.info(f"  Element {i}: Error getting info: {debug_e}")
+                    
                     break
+                else:
+                    logger.info(f"  ⚠️  No elements found with selector '{selector}'")
             except Exception as e:
-                logger.debug(f"Selector {selector} failed: {e}")
+                logger.warning(f"  ❌ Selector '{selector}' failed: {e}")
                 continue
+        
+        # If no events found with standard selectors, try alternative approaches
+        if not event_elements:
+            logger.warning("Standard FullCalendar selectors failed, trying alternative approaches...")
+            
+            # Try looking for events in table cells
+            try:
+                table_cells = self.browser.find_elements(By.CSS_SELECTOR, 'td.fc-day')
+                logger.info(f"Found {len(table_cells)} table day cells")
+                
+                for cell in table_cells:
+                    # Look for any clickable elements or divs that might be events
+                    cell_events = cell.find_elements(By.CSS_SELECTOR, 'a, div[class*="event"], div[class*="fc"]')
+                    if cell_events:
+                        event_elements.extend(cell_events)
+                        logger.info(f"Found {len(cell_events)} potential events in table cell")
+                
+                if event_elements:
+                    used_selector = "table_cell_events"
+                    logger.info(f"Total events found via table cells: {len(event_elements)}")
+                    
+            except Exception as e:
+                logger.debug(f"Table cell approach failed: {e}")
+            
+            # If still no events, try looking for any clickable elements
+            if not event_elements:
+                try:
+                    clickable_elements = self.browser.find_elements(By.CSS_SELECTOR, 'a[href], div[onclick], div[class*="click"]')
+                    logger.info(f"Found {len(clickable_elements)} clickable elements")
+                    
+                    # Filter for elements that might be events
+                    for elem in clickable_elements:
+                        try:
+                            text = elem.text.strip()
+                            if text and len(text) > 3 and any(keyword in text.lower() for keyword in ['prayer', 'meeting', 'event', 'service', 'group']):
+                                event_elements.append(elem)
+                        except:
+                            continue
+                    
+                    if event_elements:
+                        used_selector = "clickable_elements"
+                        logger.info(f"Total events found via clickable elements: {len(event_elements)}")
+                        
+                except Exception as e:
+                    logger.debug(f"Clickable elements approach failed: {e}")
+        
+        # Final fallback: Look for any elements with event-like text
+        if not event_elements:
+            logger.warning("All standard approaches failed, trying text-based event detection...")
+            try:
+                all_divs = self.browser.find_elements(By.TAG_NAME, 'div')
+                event_like_divs = []
+                
+                for div in all_divs:
+                    try:
+                        text = div.text.strip()
+                        if text and len(text) > 3:
+                            # Look for patterns that suggest this is an event
+                            if any(keyword in text.lower() for keyword in ['prayer', 'meeting', 'event', 'service', 'group', 'bible', 'worship']):
+                                event_like_divs.append(div)
+                    except:
+                        continue
+                
+                if event_like_divs:
+                    event_elements = event_like_divs
+                    used_selector = "text_based_detection"
+                    logger.info(f"Found {len(event_elements)} potential events via text analysis")
+                    
+            except Exception as e:
+                logger.debug(f"Text-based detection failed: {e}")
         
         if not event_elements:
             logger.warning("No FullCalendar events found with any selector")
@@ -349,7 +469,11 @@ class SubsplashCalendarSync:
             logger.warning("Could not determine current month/year for scraping.")
             return []
 
-        for element in event_elements:
+        # Deduplicate elements to prevent multiple copies of the same event
+        unique_elements = self._deduplicate_event_elements(event_elements)
+        logger.info(f"Found {len(event_elements)} total elements, deduplicated to {len(unique_elements)} unique elements")
+
+        for element in unique_elements:
             try:
                 month, year = current_month_year
                 event_data = self._extract_fc_event(element, month, year, calendar_type)
@@ -387,29 +511,217 @@ class SubsplashCalendarSync:
 
         return events
     
+    def _deduplicate_event_elements(self, event_elements) -> List:
+        """Deduplicate event elements to prevent multiple copies of the same event"""
+        unique_elements = []
+        seen_events = set()
+        
+        # First pass: collect all event data to understand the structure
+        event_data_list = []
+        for element in event_elements:
+            try:
+                # Get basic event info for deduplication
+                title_elements = element.find_elements(By.CSS_SELECTOR, 'div.fc-event-title')
+                if not title_elements:
+                    continue
+                
+                title = title_elements[0].text.strip()
+                if not title:
+                    continue
+                
+                # Get date info
+                date_cell = element.find_element(By.XPATH, './ancestor::td[@data-date]')
+                if not date_cell:
+                    continue
+                
+                date_str = date_cell.get_attribute('data-date')
+                if not date_str:
+                    continue
+                
+                # Get time info
+                time_elements = element.find_elements(By.CSS_SELECTOR, 'div.fc-event-time')
+                time_str = time_elements[0].text.strip() if time_elements else ""
+                
+                # Get element position and attributes for better deduplication
+                try:
+                    location = element.location
+                    size = element.size
+                    element_id = element.get_attribute('id') or ''
+                    element_classes = element.get_attribute('class') or ''
+                except:
+                    location = {'x': 0, 'y': 0}
+                    size = {'width': 0, 'height': 0}
+                    element_id = ''
+                    element_classes = ''
+                
+                # Store element with its data for analysis
+                event_data_list.append({
+                    'element': element,
+                    'title': title,
+                    'date': date_str,
+                    'time': time_str,
+                    'html': element.get_attribute('outerHTML')[:200] if element.get_attribute('outerHTML') else "",
+                    'location': location,
+                    'size': size,
+                    'id': element_id,
+                    'classes': element_classes
+                })
+                
+            except Exception as e:
+                logger.debug(f"Error during deduplication: {e}")
+                continue
+        
+        # Second pass: deduplicate based on content similarity and element properties
+        for event_data in event_data_list:
+            # Create unique key for deduplication
+            event_key = f"{event_data['title']}_{event_data['date']}_{event_data['time']}"
+            
+            # Additional check: if elements have different positions/sizes, they might be truly different
+            # This helps with cases where the same event appears in multiple places on the page
+            is_truly_unique = True
+            
+            if event_key in seen_events:
+                # Check if this might be a different instance (different position, size, or attributes)
+                for existing_data in event_data_list:
+                    if (existing_data['title'] == event_data['title'] and 
+                        existing_data['date'] == event_data['date'] and 
+                        existing_data['time'] == event_data['time']):
+                        
+                        # If positions are very close (within 5 pixels), likely duplicate
+                        if (abs(existing_data['location']['x'] - event_data['location']['x']) < 5 and
+                            abs(existing_data['location']['y'] - event_data['location']['y']) < 5):
+                            is_truly_unique = False
+                            break
+            
+            if event_key not in seen_events or is_truly_unique:
+                seen_events.add(event_key)
+                unique_elements.append(event_data['element'])
+                logger.debug(f"Added unique event: {event_data['title']} on {event_data['date']} at {event_data['time']}")
+            else:
+                logger.debug(f"Skipped duplicate event: {event_data['title']} on {event_data['date']} at {event_data['time']}")
+        
+        # Additional logging for GitHub Actions debugging
+        if os.getenv('GITHUB_ACTIONS') == 'true':
+            logger.info(f"Deduplication summary: {len(event_elements)} total elements -> {len(unique_elements)} unique elements")
+            if len(event_elements) > len(unique_elements):
+                logger.warning(f"Removed {len(event_elements) - len(unique_elements)} duplicate elements")
+                
+                # Log some examples of what was removed
+                duplicate_examples = []
+                for event_data in event_data_list:
+                    event_key = f"{event_data['title']}_{event_data['date']}_{event_data['time']}"
+                    if event_key in seen_events:
+                        duplicate_examples.append(f"{event_data['title']} on {event_data['date']} at {event_data['time']}")
+                        if len(duplicate_examples) >= 3:  # Show first 3 duplicates
+                            break
+                
+                if duplicate_examples:
+                    logger.warning(f"Duplicate examples: {', '.join(duplicate_examples)}")
+        
+        return unique_elements
+    
     def _extract_fc_event(self, event_element, month: str, year: str, calendar_type: str) -> Optional[Dict]:
         """Extract event data from a FullCalendar event element"""
         try:
-            # Get the event title - use Selenium methods
-            title_elements = event_element.find_elements(By.CSS_SELECTOR, 'div.fc-event-title')
-            if not title_elements:
-                return None
+            # Try multiple approaches to get the event title
+            title = None
+            title_selectors = [
+                'div.fc-event-title',
+                '.fc-event-title', 
+                'span',
+                'a',
+                'div'
+            ]
             
-            title = title_elements[0].text.strip()
+            for selector in title_selectors:
+                try:
+                    title_elements = event_element.find_elements(By.CSS_SELECTOR, selector)
+                    if title_elements:
+                        for elem in title_elements:
+                            text = elem.text.strip()
+                            if text and len(text) > 2:
+                                title = text
+                                break
+                        if title:
+                            break
+                except:
+                    continue
+            
+            # Fallback: get text directly from the element
             if not title:
-                return None
+                try:
+                    title = event_element.text.strip()
+                    if not title:
+                        return None
+                except:
+                    return None
             
-            # Get the event time - use Selenium methods
-            time_elements = event_element.find_elements(By.CSS_SELECTOR, 'div.fc-event-time')
-            time_str = time_elements[0].text.strip() if time_elements else ""
+            # Try multiple approaches to get the event time
+            time_str = ""
+            time_selectors = [
+                'div.fc-event-time',
+                '.fc-event-time',
+                'span[class*="time"]',
+                'div[class*="time"]'
+            ]
             
-            # Get the date from the parent day cell - use Selenium methods
-            date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
-            if not date_cell:
-                return None
+            for selector in time_selectors:
+                try:
+                    time_elements = event_element.find_elements(By.CSS_SELECTOR, selector)
+                    if time_elements:
+                        time_str = time_elements[0].text.strip()
+                        break
+                except:
+                    continue
             
-            date_str = date_cell.get_attribute('data-date')
+            # Try multiple approaches to get the date
+            date_str = None
+            
+            # First try: Look for data-date attribute in ancestor cells
+            try:
+                date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
+                if date_cell:
+                    date_str = date_cell.get_attribute('data-date')
+            except:
+                pass
+            
+            # Second try: Look for date in parent elements
             if not date_str:
+                try:
+                    parent_elements = event_element.find_elements(By.XPATH, './ancestor::*')
+                    for parent in parent_elements:
+                        try:
+                            parent_date = parent.get_attribute('data-date')
+                            if parent_date and len(parent_date) == 10:  # YYYY-MM-DD format
+                                date_str = parent_date
+                                break
+                        except:
+                            continue
+                except:
+                    pass
+            
+            # Third try: Look for date in the current month/year context
+            if not date_str:
+                try:
+                    # Try to find the current date from the calendar header
+                    current_date = datetime.now()
+                    if month and year and month != "Unknown" and year != "Unknown":
+                        try:
+                            # Parse month name to number
+                            month_num = datetime.strptime(month, '%B').month
+                            year_num = int(year)
+                            # Use the first day of the month as a fallback
+                            date_str = f"{year_num}-{month_num:02d}-01"
+                        except:
+                            # Use current date as fallback
+                            date_str = current_date.strftime('%Y-%m-%d')
+                    else:
+                        date_str = current_date.strftime('%Y-%m-%d')
+                except:
+                    date_str = datetime.now().strftime('%Y-%m-%d')
+            
+            if not date_str:
+                logger.warning(f"Could not determine date for event: {title}")
                 return None
             
             # Parse the date
