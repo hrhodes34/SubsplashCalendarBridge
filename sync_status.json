@@ -1,7 +1,7 @@
 {
-  "last_sync": "2025-08-20T02:47:54.176524",
+  "last_sync": "2025-08-20T02:58:27.011525",
   "success": true,
-  "message": "Successfully synced 2 events",
+  "message": "Successfully synced 5 events",
   "calendar_id": "b878d99dde022f1b50ebeed8cef2b7ecc77e8b6a14cce053bad48555cd697c83@group.calendar.google.com",
   "subsplash_url": "<script id=\"subsplash-embed-pysr4r6\" type=\"text/javascript\"> var target = document.getElementById(\"subsplash-embed-pysr4r6\"); var script = document.createElement(\"script\"); script.type = \"text/javascript\"; script.onload = function() { subsplashEmbed( \"+wrmm/lb/ca/+pysr4r6?embed&branding\", \"https://subsplash.com/\", \"subsplash-embed-pysr4r6\" ); }; script.src = \"https://dashboard.static.subsplash.com/production/web-client/external/embed-1.1.0.js\"; target.parentElement.insertBefore(script, target); </script>"
 }
