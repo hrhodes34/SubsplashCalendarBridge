@@ -13,7 +13,6 @@ from typing import List, Dict, Optional, Tuple
 import pickle
 
 # Google Calendar imports
-from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -118,28 +117,71 @@ class SubsplashCalendarSync:
             return False
     
     def setup_google_calendar(self) -> bool:
-        """Setup Google Calendar API service"""
+        """Setup Google Calendar API service using OAuth 2.0 or pre-authenticated token"""
         try:
-            # Check if we have service account credentials
-            credentials_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'oauth_credentials.json')
+            # Check if we have OAuth credentials
+            credentials_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
             if not os.path.exists(credentials_file):
                 logger.error(f"Google credentials file not found: {credentials_file}")
                 return False
             
-            # Load credentials
-            credentials = service_account.Credentials.from_service_account_file(
-                credentials_file,
-                scopes=['https://www.googleapis.com/auth/calendar']
-            )
+            # Check if we're in GitHub Actions (headless environment)
+            is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
             
-            # Build the service
-            self.google_service = build('calendar', 'v3', credentials=credentials)
-            
-            logger.info("Google Calendar API setup successful")
-            return True
+            if is_github_actions:
+                # GitHub Actions: Use pre-authenticated token
+                logger.info("Running in GitHub Actions - using pre-authenticated token")
+                from google.oauth2.credentials import Credentials
+                
+                # Load the pre-authenticated token
+                token_file = 'token.pickle'
+                if os.path.exists(token_file):
+                    with open(token_file, 'rb') as token:
+                        creds = pickle.load(token)
+                    
+                    # Build the service
+                    self.google_service = build('calendar', 'v3', credentials=creds)
+                    logger.info("✅ Google Calendar API setup successful (GitHub Actions)")
+                    return True
+                else:
+                    logger.error("Pre-authenticated token not found for GitHub Actions")
+                    return False
+            else:
+                # Local development: Use OAuth 2.0 flow
+                logger.info("Running locally - using OAuth 2.0 flow")
+                from google_auth_oauthlib.flow import InstalledAppFlow
+                from google.auth.transport.requests import Request
+                
+                # OAuth 2.0 scopes
+                SCOPES = ['https://www.googleapis.com/auth/calendar']
+                
+                # Check if we have a valid token
+                token_file = 'token.pickle'
+                creds = None
+                
+                if os.path.exists(token_file):
+                    with open(token_file, 'rb') as token:
+                        creds = pickle.load(token)
+                
+                # If no valid credentials available, let the user log in
+                if not creds or not creds.valid:
+                    if creds and creds.expired and creds.refresh_token:
+                        creds.refresh(Request())
+                    else:
+                        flow = InstalledAppFlow.from_client_secrets_file(credentials_file, SCOPES)
+                        creds = flow.run_local_server(port=0)
+                    
+                    # Save the credentials for the next run
+                    with open(token_file, 'wb') as token:
+                        pickle.dump(creds, token)
+                
+                # Build the service
+                self.google_service = build('calendar', 'v3', credentials=creds)
+                logger.info("✅ Google Calendar API setup successful (OAuth 2.0)")
+                return True
             
         except Exception as e:
-            logger.error(f"Google Calendar setup failed: {str(e)}")
+            logger.error(f"❌ Google Calendar setup failed: {str(e)}")
             return False
     
     def get_current_month_year(self) -> Tuple[str, str]:
@@ -252,6 +294,12 @@ class SubsplashCalendarSync:
             # Get event URL if available
             event_url = event_element.get('href', '')
             
+            # Convert relative URLs to absolute URLs for Google Calendar
+            if event_url and event_url.startswith('/'):
+                event_url = f"https://antiochboone.com{event_url}"
+            elif not event_url:
+                event_url = f"https://antiochboone.com/calendar-{calendar_type}"
+            
             # Create event object
             event = {
                 'title': title,
@@ -265,7 +313,8 @@ class SubsplashCalendarSync:
                 'url': event_url,
                 'all_day': self._is_all_day_event(start_time, end_time),
                 'source': 'Subsplash',
-                'location': 'Antioch Boone'
+                'location': 'Antioch Boone',
+                'unique_id': f"{calendar_type}_{date_str}_{title.lower().replace(' ', '_')}"
             }
             
             return event
@@ -469,12 +518,22 @@ class SubsplashCalendarSync:
             
             events_list = events_result.get('items', [])
             
-            # Find exact match
+            # Find exact match - improved logic
             for existing_event in events_list:
-                if (existing_event['summary'] == event['title'] and
-                    existing_event['start'].get('dateTime', '').startswith(event['date'])):
-                    return existing_event
+                if existing_event['summary'] == event['title']:
+                    # Check if the event is on the same date
+                    existing_start = existing_event['start'].get('dateTime', '')
+                    if existing_start:
+                        # Parse the existing event's date
+                        try:
+                            existing_date = existing_start.split('T')[0]  # Get just the date part
+                            if existing_date == event['date']:
+                                logger.debug(f"Found existing event: {event['title']} on {existing_date}")
+                                return existing_event
+                        except (IndexError, ValueError):
+                            continue
             
+            logger.debug(f"No existing event found for: {event['title']} on {event['date']}")
             return None
             
         except Exception as e:
@@ -487,7 +546,7 @@ class SubsplashCalendarSync:
             google_event = {
                 'summary': event['title'],
                 'location': event['location'],
-                'description': f"Source: {event['source']}\nURL: {event['url']}",
+                'description': f"Source: {event['source']}\nURL: {event['url']}\nUnique ID: {event['unique_id']}",
                 'start': {
                     'dateTime': event['start'].isoformat(),
                     'timeZone': 'America/New_York',
@@ -519,7 +578,7 @@ class SubsplashCalendarSync:
             google_event = {
                 'summary': event['title'],
                 'location': event['location'],
-                'description': f"Source: {event['source']}\nURL: {event['url']}",
+                'description': f"Source: {event['source']}\nURL: {event['url']}\nUnique ID: {event['unique_id']}",
                 'start': {
                     'dateTime': event['start'].isoformat(),
                     'timeZone': 'America/New_York',
@@ -563,12 +622,17 @@ class SubsplashCalendarSync:
                 sync_results['error'] = 'Failed to setup Google Calendar'
                 return sync_results
             
-            # Process each calendar type
-            for calendar_type in self.calendar_urls.keys():
-                if not self.calendar_ids.get(calendar_type):
-                    logger.warning(f"No Google Calendar ID configured for {calendar_type}, skipping")
-                    continue
-                
+            # Only process calendars that have Google Calendar IDs configured
+            configured_calendars = {
+                calendar_type: calendar_id 
+                for calendar_type, calendar_id in self.calendar_ids.items() 
+                if calendar_id
+            }
+            
+            logger.info(f"Found {len(configured_calendars)} configured calendars: {list(configured_calendars.keys())}")
+            
+            # Process each configured calendar type
+            for calendar_type, calendar_id in configured_calendars.items():
                 logger.info(f"Processing {calendar_type} calendar...")
                 
                 try:

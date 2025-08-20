@@ -1,0 +1,60 @@
+{
+  "success": true,
+  "scraped_events": 3,
+  "sync_result": {
+    "success": true,
+    "calendar_type": "prayer",
+    "total_events": 3,
+    "created": 0,
+    "updated": 3,
+    "errors": 0,
+    "error_details": []
+  },
+  "events": [
+    {
+      "title": "Early Morning Prayer",
+      "start": "2025-08-21 06:30:00",
+      "end": "2025-08-21 07:30:00",
+      "date": "2025-08-21",
+      "time": "6:30a",
+      "month": "August",
+      "year": "2025",
+      "calendar_type": "prayer",
+      "url": "https://antiochboone.com/event/62hyycx/early-morning-prayer",
+      "all_day": false,
+      "source": "Subsplash",
+      "location": "Antioch Boone",
+      "unique_id": "prayer_2025-08-21_early_morning_prayer"
+    },
+    {
+      "title": "Prayer Set",
+      "start": "2025-08-26 17:15:00",
+      "end": "2025-08-26 18:15:00",
+      "date": "2025-08-26",
+      "time": "5:15p",
+      "month": "August",
+      "year": "2025",
+      "calendar_type": "prayer",
+      "url": "https://antiochboone.com/event/9ysg9zw/prayer-set",
+      "all_day": false,
+      "source": "Subsplash",
+      "location": "Antioch Boone",
+      "unique_id": "prayer_2025-08-26_prayer_set"
+    },
+    {
+      "title": "Early Morning Prayer",
+      "start": "2025-08-28 06:30:00",
+      "end": "2025-08-28 07:30:00",
+      "date": "2025-08-28",
+      "time": "6:30a",
+      "month": "August",
+      "year": "2025",
+      "calendar_type": "prayer",
+      "url": "https://antiochboone.com/event/bs2pygh/early-morning-prayer",
+      "all_day": false,
+      "source": "Subsplash",
+      "location": "Antioch Boone",
+      "unique_id": "prayer_2025-08-28_early_morning_prayer"
+    }
+  ]
+}
