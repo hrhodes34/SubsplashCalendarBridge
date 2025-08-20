@@ -26,6 +26,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -42,7 +43,7 @@ class SubsplashCalendarSync:
     """Main class for syncing Subsplash calendars to Google Calendar"""
     
     def __init__(self):
-        self.driver = None
+        self.browser = None
         self.google_service = None
         self.calendar_ids = {
             'prayer': os.getenv('PRAYER_CALENDAR_ID'),
@@ -89,6 +90,7 @@ class SubsplashCalendarSync:
         self.max_months_to_check = int(os.getenv('MAX_MONTHS_TO_CHECK', '6'))
         self.max_consecutive_empty_months = int(os.getenv('MAX_CONSECUTIVE_EMPTY_MONTHS', '3'))
         self.browser_wait_time = int(os.getenv('BROWSER_WAIT_TIME', '10'))
+        self.save_debug_files = os.getenv('SAVE_DEBUG_FILES', 'false').lower() == 'true'
         
         logger.info("Initialized Subsplash Calendar Sync")
     
@@ -107,7 +109,7 @@ class SubsplashCalendarSync:
             
             # Setup Chrome driver
             service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.browser = webdriver.Chrome(service=service, options=chrome_options)
             
             logger.info("Browser setup successful")
             return True
@@ -187,7 +189,7 @@ class SubsplashCalendarSync:
     def get_current_month_year(self) -> Tuple[str, str]:
         """Get the current month and year displayed in the calendar"""
         try:
-            month_year_element = self.driver.find_element(By.CLASS_NAME, "fc-toolbar-title")
+            month_year_element = self.browser.find_element(By.CLASS_NAME, "fc-toolbar-title")
             month_year_text = month_year_element.text.strip()
             
             parts = month_year_text.split()
@@ -206,14 +208,14 @@ class SubsplashCalendarSync:
     def navigate_to_next_month(self) -> bool:
         """Click the next month button to navigate forward"""
         try:
-            next_button = self.driver.find_element(By.CLASS_NAME, "fc-next-button")
+            next_button = self.browser.find_element(By.CLASS_NAME, "fc-next-button")
             next_button.click()
             
             # Wait for the calendar to update
             time.sleep(3)
             
             # Wait for new events to load
-            WebDriverWait(self.driver, 10).until(
+            WebDriverWait(self.browser, 10).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "fc-event"))
             )
             
@@ -225,36 +227,126 @@ class SubsplashCalendarSync:
             return False
     
     def scrape_current_month_events(self, calendar_type: str) -> List[Dict]:
-        """Scrape events from the currently displayed month"""
+        """Scrape events from the currently displayed month."""
         events = []
         
+        if self.save_debug_files:
+            # Save page source for debugging
+            debug_file_path = f"debug_page_source_{calendar_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            with open(debug_file_path, 'w', encoding='utf-8') as f:
+                f.write(self.browser.page_source)
+            logger.info(f"Saved debug page source to {debug_file_path}")
+
+        # Wait for the calendar to fully load
         try:
-            month, year = self.get_current_month_year()
-            logger.info(f"Scraping {calendar_type} events for {month} {year}")
+            WebDriverWait(self.browser, self.browser_wait_time).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '.fc-view-container'))
+            )
+            # Additional wait for FullCalendar to render events
+            time.sleep(3)
+        except TimeoutException:
+            logger.warning("Calendar container not found, proceeding anyway...")
+
+        # Try multiple FullCalendar selectors in order of specificity
+        event_selectors = [
+            'a.fc-event',  # Most specific - FullCalendar event links
+            '.fc-event',   # FullCalendar event elements
+            'div.fc-event', # FullCalendar event divs
+            '[class*="fc-event"]', # Any element with fc-event in class
+        ]
+        
+        event_elements = []
+        used_selector = None
+        
+        for selector in event_selectors:
+            try:
+                elements = self.browser.find_elements(By.CSS_SELECTOR, selector)
+                if elements:
+                    event_elements = elements
+                    used_selector = selector
+                    logger.info(f"Found {len(elements)} events using selector: {selector}")
+                    break
+            except Exception as e:
+                logger.debug(f"Selector {selector} failed: {e}")
+                continue
+        
+        if not event_elements:
+            logger.warning("No FullCalendar events found with any selector")
+            # Try to understand what's on the page
+            try:
+                # Look for any elements that might contain event information
+                all_divs = self.browser.find_elements(By.TAG_NAME, 'div')
+                event_like_divs = [div for div in all_divs if any(keyword in div.get_attribute('class') or keyword in div.get_attribute('id') or keyword in div.text.lower() 
+                                                               for keyword in ['event', 'calendar', 'schedule', 'meeting', 'prayer', 'kids', 'bam'])]
+                logger.info(f"Found {len(event_like_divs)} divs that might contain event info")
+                
+                # Save a sample of these elements for debugging
+                if event_like_divs and self.save_debug_files:
+                    debug_elements = []
+                    for i, div in enumerate(event_like_divs[:10]):  # First 10
+                        try:
+                            debug_elements.append({
+                                'index': i,
+                                'class': div.get_attribute('class'),
+                                'id': div.get_attribute('id'),
+                                'text': div.text[:200] if div.text else '',
+                                'tag': div.tag_name
+                            })
+                        except:
+                            continue
+                    
+                    debug_file_path = f"debug_elements_{calendar_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                    with open(debug_file_path, 'w', encoding='utf-8') as f:
+                        json.dump(debug_elements, f, indent=2)
+                    logger.info(f"Saved debug elements to {debug_file_path}")
+                
+            except Exception as e:
+                logger.debug(f"Error analyzing page structure: {e}")
             
-            # Get page source and parse with BeautifulSoup
-            page_source = self.driver.page_source
-            soup = BeautifulSoup(page_source, 'html.parser')
+            return []
+
+        # Extract events using the found selector
+        current_month_year = self.get_current_month_year()
+        if not current_month_year:
+            logger.warning("Could not determine current month/year for scraping.")
+            return []
+
+        for element in event_elements:
+            try:
+                event_data = self._extract_fc_event(element, current_month_year, calendar_type)
+                if event_data:
+                    events.append(event_data)
+                    logger.debug(f"Extracted event: {event_data['title']} on {event_data['date']}")
+            except Exception as e:
+                logger.warning(f"Error extracting event from element: {e}")
+                continue
+
+        if events:
+            logger.info(f"Successfully extracted {len(events)} events using {used_selector}")
+        else:
+            logger.warning(f"Found {len(event_elements)} elements with {used_selector} but failed to extract event data")
             
-            # Look specifically for FullCalendar events
-            fc_events = soup.find_all('a', class_='fc-event')
-            logger.info(f"Found {len(fc_events)} events in {month} {year}")
-            
-            for i, event_element in enumerate(fc_events):
-                try:
-                    event = self._extract_fc_event(event_element, month, year, calendar_type)
-                    if event:
-                        events.append(event)
-                        logger.info(f"  Event {i+1}: {event['title']} on {event['start']}")
-                except Exception as e:
-                    logger.warning(f"Error extracting event {i+1}: {str(e)}")
-                    continue
-            
-            return events
-            
-        except Exception as e:
-            logger.error(f"Error scraping current month events: {str(e)}")
-            return events
+            # Debug: Try to see what's in these elements
+            if self.save_debug_files and event_elements:
+                debug_events = []
+                for i, element in enumerate(event_elements[:5]):  # First 5
+                    try:
+                        debug_events.append({
+                            'index': i,
+                            'tag': element.tag_name,
+                            'class': element.get_attribute('class'),
+                            'text': element.text[:200] if element.text else '',
+                            'html': element.get_attribute('outerHTML')[:500] if element.get_attribute('outerHTML') else ''
+                        })
+                    except:
+                        continue
+                
+                debug_file_path = f"debug_event_elements_{calendar_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                with open(debug_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(debug_events, f, indent=2)
+                logger.info(f"Saved debug event elements to {debug_file_path}")
+
+        return events
     
     def _extract_fc_event(self, event_element, month: str, year: str, calendar_type: str) -> Optional[Dict]:
         """Extract event data from a FullCalendar event element"""
@@ -391,7 +483,7 @@ class SubsplashCalendarSync:
                 return all_events
             
             logger.info(f"Navigating to {calendar_type} calendar: {calendar_url}")
-            self.driver.get(calendar_url)
+            self.browser.get(calendar_url)
             
             # Wait for page to load
             time.sleep(5)
@@ -443,8 +535,8 @@ class SubsplashCalendarSync:
             logger.error(f"Error scraping {calendar_type} calendar: {str(e)}")
             return all_events
         finally:
-            if self.driver:
-                self.driver.quit()
+            if self.browser:
+                self.browser.quit()
     
     def sync_events_to_google_calendar(self, events: List[Dict], calendar_type: str) -> Dict:
         """Sync events to Google Calendar"""
