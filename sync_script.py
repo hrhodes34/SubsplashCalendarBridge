@@ -7,13 +7,14 @@ This script runs automatically via GitHub Actions to sync events from Subsplash 
 import os
 import json
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, relativedelta
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import time
 from dateutil import parser
+from dateutil.relativedelta import relativedelta
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -94,7 +95,33 @@ class SubsplashSyncService:
                 subsplash_url.replace("?embed", "&expand=1"),
                 subsplash_url.replace("?embed", "&full=1"),
                 subsplash_url.replace("?embed", "&complete=1"),
-                subsplash_url.replace("?embed", "&all=1")
+                subsplash_url.replace("?embed", "&all=1"),
+                # Add more aggressive future loading parameters
+                subsplash_url.replace("?embed", "&months_ahead=36"),
+                subsplash_url.replace("?embed", "&months_ahead=48"),
+                subsplash_url.replace("?embed", "&months_ahead=60"),
+                subsplash_url.replace("?embed", "&end_date=2030-12-31"),
+                subsplash_url.replace("?embed", "&end_date=2035-12-31"),
+                subsplash_url.replace("?embed", "&range=extended"),
+                subsplash_url.replace("?embed", "&range=unlimited"),
+                subsplash_url.replace("?embed", "&load_all_future=1"),
+                subsplash_url.replace("?embed", "&future_limit=none"),
+                # Try different calendar navigation approaches
+                subsplash_url.replace("?embed", "&nav=next_year"),
+                subsplash_url.replace("?embed", "&nav=extended"),
+                subsplash_url.replace("?embed", "&nav=all_future"),
+                # Try to force full calendar load
+                subsplash_url.replace("?embed", "&force_load=1"),
+                subsplash_url.replace("?embed", "&preload=1"),
+                subsplash_url.replace("?embed", "&cache=1"),
+                # Try different event loading strategies
+                subsplash_url.replace("?embed", "&load_strategy=all"),
+                subsplash_url.replace("?embed", "&load_strategy=future"),
+                subsplash_url.replace("?embed", "&load_strategy=extended"),
+                # Try to trigger lazy loading
+                subsplash_url.replace("?embed", "&lazy_load=1"),
+                subsplash_url.replace("?embed", "&infinite_scroll=1"),
+                subsplash_url.replace("?embed", "&auto_load=1")
             ]
             
             all_events = []
@@ -132,6 +159,34 @@ class SubsplashSyncService:
             if format_events:
                 all_events.extend(format_events)
                 print(f"✅ Different formats: Found {len(format_events)} events")
+            
+            # Try to find hidden calendar data in the page
+            print("🔍 Looking for hidden calendar data...")
+            hidden_events = self._find_hidden_calendar_data(subsplash_url)
+            if hidden_events:
+                all_events.extend(hidden_events)
+                print(f"✅ Hidden data: Found {len(hidden_events)} events")
+            
+            # Try to simulate browser behavior to trigger dynamic loading
+            print("🔍 Trying to simulate browser behavior...")
+            browser_events = self._simulate_browser_behavior(subsplash_url)
+            if browser_events:
+                all_events.extend(browser_events)
+                print(f"✅ Browser simulation: Found {len(browser_events)} events")
+            
+            # Try systematic month-by-month calendar scraping
+            print("🔍 Trying systematic month-by-month calendar scraping...")
+            calendar_events = self._scrape_calendar_month_by_month()
+            if calendar_events:
+                all_events.extend(calendar_events)
+                print(f"✅ Calendar scraping: Found {len(calendar_events)} events")
+            
+            # Try alternative calendar navigation approaches
+            print("🔍 Trying alternative calendar navigation approaches...")
+            alt_calendar_events = self._try_alternative_calendar_navigation()
+            if alt_calendar_events:
+                all_events.extend(alt_calendar_events)
+                print(f"✅ Alternative navigation: Found {len(alt_calendar_events)} events")
             
             # Remove duplicates based on title and start time
             unique_events = self._deduplicate_events(all_events)
@@ -1751,6 +1806,1021 @@ class SubsplashSyncService:
         else:
             self.save_status(False, "Sync to Google Calendar failed")
             return False
+    
+    def _find_hidden_calendar_data(self, base_url):
+        """Try to find hidden calendar data in the page that might contain future events"""
+        events = []
+        
+        try:
+            # Get the main page to look for hidden data
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            response = requests.get(base_url, headers=headers, timeout=60)
+            if response.status_code != 200:
+                return events
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Look for hidden input fields that might contain calendar data
+            hidden_inputs = soup.find_all('input', type='hidden')
+            for hidden_input in hidden_inputs:
+                name = hidden_input.get('name', '')
+                value = hidden_input.get('value', '')
+                
+                if any(keyword in name.lower() for keyword in ['calendar', 'event', 'data', 'json']):
+                    print(f"🔍 Found hidden input: {name}")
+                    try:
+                        # Try to parse as JSON
+                        if value.startswith('{') or value.startswith('['):
+                            data = json.loads(value)
+                            hidden_events = self._parse_json_events(data)
+                            if hidden_events:
+                                events.extend(hidden_events)
+                                print(f"✅ Hidden input {name}: Found {len(hidden_events)} events")
+                    except:
+                        # Try to parse as text
+                        if len(value) > 50:
+                            text_events = self._parse_text_events(value.encode())
+                            if text_events:
+                                events.extend(text_events)
+                                print(f"✅ Hidden input {name}: Found {len(text_events)} events from text")
+            
+            # Look for data attributes that might contain event information
+            data_elements = soup.find_all(attrs={'data-': True})
+            for element in data_elements:
+                for attr_name, attr_value in element.attrs.items():
+                    if attr_name.startswith('data-') and len(attr_value) > 20:
+                        attr_name_lower = attr_name.lower()
+                        if any(keyword in attr_name_lower for keyword in ['calendar', 'event', 'data', 'json']):
+                            print(f"🔍 Found data attribute: {attr_name}")
+                            try:
+                                # Try to parse as JSON
+                                if attr_value.startswith('{') or attr_value.startswith('['):
+                                    data = json.loads(attr_value)
+                                    hidden_events = self._parse_json_events(data)
+                                    if hidden_events:
+                                        events.extend(hidden_events)
+                                        print(f"✅ Data attribute {attr_name}: Found {len(hidden_events)} events")
+                            except:
+                                # Try to parse as text
+                                text_events = self._parse_text_events(attr_value.encode())
+                                if text_events:
+                                    events.extend(text_events)
+                                    print(f"✅ Data attribute {attr_name}: Found {len(text_events)} events from text")
+            
+            # Look for script tags with calendar data
+            script_tags = soup.find_all('script')
+            for script in script_tags:
+                if script.string:
+                    script_content = script.string
+                    
+                    # Look for more specific calendar data patterns
+                    calendar_patterns = [
+                        r'calendarData\s*=\s*({.*?});',
+                        r'eventList\s*=\s*(\[.*?\]);',
+                        r'futureEvents\s*=\s*(\[.*?\]);',
+                        r'upcomingEvents\s*=\s*(\[.*?\]);',
+                        r'extendedEvents\s*=\s*(\[.*?\]);',
+                        r'fullCalendar\s*=\s*({.*?});',
+                        r'calendarEvents\s*=\s*(\[.*?\]);',
+                        r'eventsData\s*=\s*({.*?});',
+                        r'calendarConfig\s*=\s*({.*?});',
+                        r'eventConfig\s*=\s*({.*?});',
+                        r'subsplashEvents\s*=\s*(\[.*?\]);',
+                        r'churchEvents\s*=\s*(\[.*?\]);',
+                        r'wrmmEvents\s*=\s*(\[.*?\]);'
+                    ]
+                    
+                    for pattern in calendar_patterns:
+                        matches = re.findall(pattern, script_content, re.DOTALL)
+                        for match in matches:
+                            try:
+                                # Clean up the match
+                                cleaned_match = match.strip()
+                                if cleaned_match.endswith(','):
+                                    cleaned_match = cleaned_match[:-1]
+                                
+                                data = json.loads(cleaned_match)
+                                hidden_events = self._parse_json_events(data)
+                                if hidden_events:
+                                    events.extend(hidden_events)
+                                    print(f"✅ Script pattern: Found {len(hidden_events)} events")
+                            except:
+                                continue
+            
+            # Look for iframe sources that might contain calendar data
+            iframes = soup.find_all('iframe')
+            for iframe in iframes:
+                src = iframe.get('src', '')
+                if src and ('calendar' in src.lower() or 'event' in src.lower()):
+                    print(f"🔍 Found calendar iframe: {src}")
+                    try:
+                        iframe_response = requests.get(src, headers=headers, timeout=30)
+                        if iframe_response.status_code == 200:
+                            iframe_soup = BeautifulSoup(iframe_response.content, 'html.parser')
+                            iframe_events = self._extract_events_from_page(iframe_soup)
+                            if iframe_events:
+                                events.extend(iframe_events)
+                                print(f"✅ Iframe {src}: Found {len(iframe_events)} events")
+                    except Exception as e:
+                        print(f"⚠️ Error with iframe {src}: {str(e)}")
+                        continue
+            
+        except Exception as e:
+            print(f"⚠️ Error finding hidden calendar data: {str(e)}")
+        
+        return events
+    
+    def _scrape_calendar_month_by_month(self):
+        """Systematically scrape the church's calendar month by month until we find an empty month"""
+        events = []
+        
+        try:
+            # Base calendar URL
+            base_calendar_url = "https://antiochboone.com/calendar"
+            
+            # Headers to mimic a real browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            # Start from current month and go forward until we find an empty month
+            current_date = datetime.now()
+            consecutive_empty_months = 0
+            max_consecutive_empty = 3  # Stop after 3 consecutive empty months
+            max_months_to_check = 60  # Safety limit to prevent infinite loops
+            
+            print(f"🗓️ Starting systematic calendar scraping from {current_date.strftime('%B %Y')}")
+            
+            for month_offset in range(max_months_to_check):
+                # Calculate the target month
+                target_date = current_date + relativedelta(months=month_offset)
+                target_month = target_date.month
+                target_year = target_date.year
+                
+                # Try different URL patterns for the month
+                month_urls = [
+                    f"{base_calendar_url}?month={target_month}&year={target_year}",
+                    f"{base_calendar_url}?m={target_month}&y={target_year}",
+                    f"{base_calendar_url}/{target_year}/{target_month:02d}",
+                    f"{base_calendar_url}/month/{target_year}/{target_month:02d}",
+                    f"{base_calendar_url}/calendar/{target_year}/{target_month:02d}",
+                    f"{base_calendar_url}?date={target_year}-{target_month:02d}",
+                    f"{base_calendar_url}?view=month&month={target_month}&year={target_year}",
+                ]
+                
+                month_events = []
+                month_has_events = False
+                
+                print(f"🔍 Checking {target_date.strftime('%B %Y')}...")
+                
+                for url in month_urls:
+                    try:
+                        response = requests.get(url, headers=headers, timeout=30)
+                        if response.status_code == 200:
+                            soup = BeautifulSoup(response.content, 'html.parser')
+                            
+                            # Try to extract events from this month's page
+                            month_page_events = self._extract_events_from_month_page(soup, target_date)
+                            
+                            if month_page_events:
+                                month_events.extend(month_page_events)
+                                month_has_events = True
+                                print(f"  ✅ Found {len(month_page_events)} events via {url.split('?')[0]}")
+                                break  # Found events, no need to try other URL patterns
+                            else:
+                                print(f"  ⚠️ No events found via {url.split('?')[0]}")
+                        else:
+                            print(f"  ❌ HTTP {response.status_code} for {url.split('?')[0]}")
+                            
+                    except Exception as e:
+                        print(f"  ⚠️ Error checking {url.split('?')[0]}: {str(e)}")
+                        continue
+                
+                # If we found events this month, add them and reset empty counter
+                if month_has_events:
+                    events.extend(month_events)
+                    consecutive_empty_months = 0
+                    print(f"  📅 Total events for {target_date.strftime('%B %Y')}: {len(month_events)}")
+                else:
+                    consecutive_empty_months += 1
+                    print(f"  📭 Month {target_date.strftime('%B %Y')} is empty (consecutive empty: {consecutive_empty_months})")
+                
+                # Stop if we've had too many consecutive empty months
+                if consecutive_empty_months >= max_consecutive_empty:
+                    print(f"🛑 Stopping after {max_consecutive_empty} consecutive empty months")
+                    break
+                
+                # Add a small delay to be respectful to the server
+                time.sleep(1)
+            
+            print(f"🏁 Calendar scraping complete. Checked {len(events)} total events across multiple months.")
+            return events
+            
+        except Exception as e:
+            print(f"❌ Error in systematic calendar scraping: {str(e)}")
+            return events
+    
+    def _extract_events_from_month_page(self, soup, target_date):
+        """Extract events from a specific month's calendar page"""
+        events = []
+        
+        try:
+            # Try multiple strategies to find events on the calendar page
+            
+            # Strategy 1: Look for calendar grid cells
+            calendar_selectors = [
+                'td[class*="calendar"]',
+                'td[class*="day"]',
+                'div[class*="calendar-day"]',
+                'div[class*="day-cell"]',
+                'li[class*="calendar-day"]',
+                'div[class*="date-cell"]',
+                'td[class*="date"]',
+                'div[class*="event-day"]',
+                'div[class*="day-events"]'
+            ]
+            
+            for selector in calendar_selectors:
+                try:
+                    day_cells = soup.select(selector)
+                    if day_cells:
+                        print(f"    🔍 Found {len(day_cells)} day cells with selector: {selector}")
+                        
+                        for cell in day_cells:
+                            cell_events = self._extract_events_from_calendar_cell(cell, target_date)
+                            if cell_events:
+                                events.extend(cell_events)
+                        
+                        if events:
+                            break  # Found events, no need to try other selectors
+                except Exception as e:
+                    print(f"    ⚠️ Error with selector {selector}: {str(e)}")
+                    continue
+            
+            # Strategy 2: Look for event lists
+            if not events:
+                event_list_selectors = [
+                    'ul[class*="events"]',
+                    'div[class*="event-list"]',
+                    'div[class*="events-list"]',
+                    'ul[class*="calendar-events"]',
+                    'div[class*="upcoming-events"]',
+                    'div[class*="month-events"]',
+                    'section[class*="events"]',
+                    'div[class*="calendar-content"]'
+                ]
+                
+                for selector in event_list_selectors:
+                    try:
+                        event_lists = soup.select(selector)
+                        if event_lists:
+                            print(f"    🔍 Found event list with selector: {selector}")
+                            
+                            for event_list in event_lists:
+                                list_events = self._extract_events_from_list(event_list, target_date)
+                                if list_events:
+                                    events.extend(list_events)
+                            
+                            if events:
+                                break
+                    except Exception as e:
+                        print(f"    ⚠️ Error with event list selector {selector}: {str(e)}")
+                        continue
+            
+            # Strategy 3: Look for any elements that might contain event information
+            if not events:
+                general_selectors = [
+                    'div[class*="event"]',
+                    'div[class*="calendar"]',
+                    'article[class*="event"]',
+                    'li[class*="event"]',
+                    'div[class*="item"]',
+                    'div[class*="entry"]'
+                ]
+                
+                for selector in general_selectors:
+                    try:
+                        elements = soup.select(selector)
+                        if elements:
+                            print(f"    🔍 Found {len(elements)} elements with selector: {selector}")
+                            
+                            for element in elements:
+                                element_events = self._extract_events_from_general_element(element, target_date)
+                                if element_events:
+                                    events.extend(element_events)
+                            
+                            if events:
+                                break
+                    except Exception as e:
+                        print(f"    ⚠️ Error with general selector {selector}: {str(e)}")
+                        continue
+            
+            # Strategy 4: Fallback to text analysis
+            if not events:
+                print(f"    🔍 No events found with selectors, trying text analysis...")
+                text_events = self._extract_events_from_text(soup)
+                if text_events:
+                    events.extend(text_events)
+                    print(f"    ✅ Text analysis found {len(text_events)} events")
+            
+        except Exception as e:
+            print(f"    ⚠️ Error extracting events from month page: {str(e)}")
+        
+        return events
+    
+    def _extract_events_from_calendar_cell(self, cell, month_year):
+        """Extract events from a single calendar day cell"""
+        events = []
+        
+        try:
+            # Look for event information within the cell
+            event_selectors = [
+                'div[class*="event"]',
+                'span[class*="event"]',
+                'a[class*="event"]',
+                'div[class*="title"]',
+                'span[class*="title"]',
+                'a[class*="title"]'
+            ]
+            
+            for selector in event_selectors:
+                try:
+                    event_elements = cell.select(selector)
+                    if event_elements:
+                        for element in event_elements:
+                            event = self._extract_event_from_calendar_element(element, month_year)
+                            if event:
+                                events.append(event)
+                        break
+                except Exception as e:
+                    continue
+            
+            # If no events found with selectors, try to extract from the cell text
+            if not events:
+                cell_text = cell.get_text(strip=True)
+                if cell_text and len(cell_text) > 5:
+                    # Try to parse the cell text as an event
+                    event = self._parse_cell_text_as_event(cell_text, month_year)
+                    if event:
+                        events.append(event)
+            
+        except Exception as e:
+            print(f"      ⚠️ Error extracting events from calendar cell: {str(e)}")
+        
+        return events
+    
+    def _extract_events_from_list(self, event_list, month_year):
+        """Extract events from an event list element"""
+        events = []
+        
+        try:
+            # Look for individual event items
+            event_item_selectors = [
+                'li[class*="event"]',
+                'div[class*="event"]',
+                'article[class*="event"]',
+                'div[class*="item"]',
+                'li[class*="item"]'
+            ]
+            
+            for selector in event_item_selectors:
+                try:
+                    event_items = event_list.select(selector)
+                    if event_items:
+                        for item in event_items:
+                            event = self._extract_event_from_calendar_element(item, month_year)
+                            if event:
+                                events.append(event)
+                        break
+                except Exception as e:
+                    continue
+            
+        except Exception as e:
+            print(f"      ⚠️ Error extracting events from list: {str(e)}")
+        
+        return events
+    
+    def _extract_events_from_general_element(self, element, month_year):
+        """Extract events from a general element that might contain event information"""
+        events = []
+        
+        try:
+            # Try to extract event information from the element
+            event = self._extract_event_from_calendar_element(element, month_year)
+            if event:
+                events.append(event)
+            
+        except Exception as e:
+            print(f"      ⚠️ Error extracting events from general element: {str(e)}")
+        
+        return events
+    
+    def _extract_event_from_calendar_element(self, element, month_year):
+        """Extract a single event from a calendar element"""
+        try:
+            # Extract title
+            title = None
+            title_selectors = [
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                '[class*="title"]', '[class*="name"]', '[class*="heading"]',
+                'strong', 'b', 'span[class*="title"]', 'a[class*="title"]'
+            ]
+            
+            for selector in title_selectors:
+                title_elem = element.select_one(selector)
+                if title_elem and title_elem.get_text(strip=True):
+                    title = title_elem.get_text(strip=True)
+                    break
+            
+            if not title:
+                # Try to get any text that might be a title
+                text_elements = element.find_all(text=True, recursive=True)
+                for text in text_elements:
+                    text = text.strip()
+                    if text and len(text) > 5 and len(text) < 100:
+                        # Check if it looks like an event title
+                        if not any(word in text.lower() for word in ['am', 'pm', 'edt', 'est', 'from', 'to', 'august', 'september', 'october', 'november', 'december']):
+                            if text[0].isupper():  # Starts with capital letter
+                                title = text
+                                break
+            
+            if not title:
+                return None
+            
+            # Extract date/time information
+            date_time_text = None
+            date_selectors = [
+                '[class*="date"]', '[class*="time"]', '[class*="datetime"]',
+                '[class*="subtitle"]', '[class*="meta"]', '[class*="info"]',
+                'time', 'span[class*="date"]', 'div[class*="date"]'
+            ]
+            
+            for selector in date_selectors:
+                date_elem = element.select_one(selector)
+                if date_elem:
+                    date_text = date_elem.get_text(strip=True)
+                    if self._looks_like_datetime(date_text):
+                        date_time_text = date_text
+                        break
+            
+            # If no date found in specific elements, search all text
+            if not date_time_text:
+                all_text = element.get_text()
+                # Look for date patterns in the text
+                import re
+                date_patterns = [
+                    r'[A-Za-z]+ \d{1,2},? \d{4}',
+                    r'[A-Za-z]+ \d{1,2}',
+                    r'\d{1,2}:\d{2}[ap]m',
+                    r'from \d{1,2}:\d{2}[ap]m',
+                    r'to \d{1,2}:\d{2}[ap]m'
+                ]
+                
+                for pattern in date_patterns:
+                    matches = re.findall(pattern, all_text)
+                    if matches:
+                        # Find the context around the match
+                        for match in matches:
+                            start_idx = all_text.find(match)
+                            if start_idx >= 0:
+                                context = all_text[max(0, start_idx-50):start_idx+len(match)+50]
+                                if self._looks_like_datetime(context):
+                                    date_time_text = context.strip()
+                                    break
+                        if date_time_text:
+                            break
+            
+            # If still no date found, try to infer from month_year context
+            if not date_time_text:
+                # Try to find a day number in the element
+                day_pattern = r'\b(\d{1,2})\b'
+                day_match = re.search(day_pattern, element.get_text())
+                if day_match:
+                    day = int(day_match.group(1))
+                    # Try to construct a date from the month_year context
+                    try:
+                        from dateutil import parser
+                        # Try different date formats
+                        date_formats = [
+                            f"{month_year} {day}",
+                            f"{day} {month_year}",
+                            f"{month_year.split()[0]} {day}, {month_year.split()[1]}"
+                        ]
+                        
+                        for date_format in date_formats:
+                            try:
+                                parsed_date = parser.parse(date_format)
+                                # Assume it's an all-day event
+                                start_time = parsed_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                                end_time = parsed_date.replace(hour=23, minute=59, second=59, microsecond=0)
+                                
+                                event = {
+                                    'title': title,
+                                    'start': start_time,
+                                    'end': end_time,
+                                    'description': f"Event on {date_format}",
+                                    'location': 'Antioch Boone',
+                                    'all_day': True
+                                }
+                                
+                                return event
+                            except:
+                                continue
+                    except:
+                        pass
+            
+            # If we have date/time text, parse it
+            if date_time_text:
+                parsed_datetime = self._parse_subsplash_datetime(date_time_text)
+                if parsed_datetime:
+                    start_time, end_time = parsed_datetime
+                    
+                    # Extract description
+                    description = ""
+                    desc_selectors = [
+                        '[class*="summary"]', '[class*="description"]', '[class*="details"]',
+                        '[class*="content"]', 'p', 'div[class*="text"]'
+                    ]
+                    
+                    for desc_sel in desc_selectors:
+                        desc_elem = element.select_one(desc_sel)
+                        if desc_elem:
+                            desc_text = desc_elem.get_text(strip=True)
+                            if desc_text and desc_text != title and len(desc_text) > 10:
+                                description = desc_text
+                                break
+                    
+                    event = {
+                        'title': title,
+                        'start': start_time,
+                        'end': end_time,
+                        'description': description,
+                        'location': 'Antioch Boone',
+                        'all_day': False
+                    }
+                    
+                    return event
+            
+            return None
+            
+        except Exception as e:
+            print(f"        ⚠️ Error extracting event from calendar element: {str(e)}")
+            return None
+    
+    def _parse_cell_text_as_event(self, cell_text, month_year):
+        """Try to parse calendar cell text as an event"""
+        try:
+            # Look for patterns like "Event Name" or "Event Name Time"
+            lines = cell_text.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if line and len(line) > 5 and len(line) < 100:
+                    # Check if it looks like an event title
+                    if not any(word in line.lower() for word in ['am', 'pm', 'edt', 'est', 'from', 'to', 'august', 'september', 'october', 'november', 'december']):
+                        if line[0].isupper():  # Starts with capital letter
+                            # Try to find a day number in the cell text
+                            import re
+                            day_pattern = r'\b(\d{1,2})\b'
+                            day_match = re.search(day_pattern, cell_text)
+                            
+                            if day_match:
+                                day = int(day_match.group(1))
+                                try:
+                                    from dateutil import parser
+                                    # Try to construct a date
+                                    date_format = f"{month_year.split()[0]} {day}, {month_year.split()[1]}"
+                                    parsed_date = parser.parse(date_format)
+                                    
+                                    # Assume it's an all-day event
+                                    start_time = parsed_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                                    end_time = parsed_date.replace(hour=23, minute=59, second=59, microsecond=0)
+                                    
+                                    event = {
+                                        'title': line,
+                                        'start': start_time,
+                                        'end': end_time,
+                                        'description': f"Event on {date_format}",
+                                        'location': 'Antioch Boone',
+                                        'all_day': True
+                                    }
+                                    
+                                    return event
+                                except:
+                                    continue
+            
+            return None
+            
+        except Exception as e:
+            print(f"        ⚠️ Error parsing cell text as event: {str(e)}")
+            return None
+    
+    def _try_alternative_calendar_navigation(self):
+        """Try alternative approaches to access calendar data"""
+        events = []
+        
+        try:
+            # Try different base URLs and approaches
+            alternative_urls = [
+                "https://antiochboone.com/events",
+                "https://antiochboone.com/calendar/events",
+                "https://antiochboone.com/upcoming-events",
+                "https://antiochboone.com/all-events",
+                "https://antiochboone.com/calendar/list",
+                "https://antiochboone.com/calendar/grid",
+                "https://antiochboone.com/calendar/monthly",
+                "https://antiochboone.com/calendar/yearly",
+                # Try Subsplash-specific URLs
+                "https://subsplash.com/+wrmm/lb/ca/+pysr4r6",
+                "https://subsplash.com/+wrmm/lb/ca/+pysr4r6/events",
+                "https://subsplash.com/+wrmm/lb/ca/+pysr4r6/calendar",
+            ]
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            print("  🔍 Trying alternative calendar URLs...")
+            
+            for url in alternative_urls:
+                try:
+                    response = requests.get(url, headers=headers, timeout=30)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'html.parser')
+                        
+                        # Try to extract events from this alternative page
+                        alt_page_events = self._extract_events_from_alternative_page(soup, url)
+                        
+                        if alt_page_events:
+                            events.extend(alt_page_events)
+                            print(f"    ✅ {url.split('/')[-1]}: Found {len(alt_page_events)} events")
+                        else:
+                            print(f"    ⚠️ {url.split('/')[-1]}: No events found")
+                    else:
+                        print(f"    ❌ {url.split('/')[-1]}: HTTP {response.status_code}")
+                        
+                except Exception as e:
+                    print(f"    ⚠️ Error with {url.split('/')[-1]}: {str(e)}")
+                    continue
+                
+                # Small delay between requests
+                time.sleep(0.5)
+            
+            # Try to find and parse any embedded calendar data
+            print("  🔍 Looking for embedded calendar data...")
+            embedded_events = self._find_embedded_calendar_data()
+            if embedded_events:
+                events.extend(embedded_events)
+                print(f"    ✅ Embedded data: Found {len(embedded_events)} events")
+            
+            return events
+            
+        except Exception as e:
+            print(f"❌ Error in alternative calendar navigation: {str(e)}")
+            return events
+    
+    def _extract_events_from_alternative_page(self, soup, url):
+        """Extract events from alternative calendar pages"""
+        events = []
+        
+        try:
+            # Try different event extraction strategies for alternative pages
+            event_selectors = [
+                # Common event selectors
+                'div[class*="event"]',
+                'div[class*="item"]',
+                'div[class*="entry"]',
+                'div[class*="post"]',
+                'div[class*="card"]',
+                'div[class*="listing"]',
+                'li[class*="event"]',
+                'li[class*="item"]',
+                'article[class*="event"]',
+                'article[class*="item"]',
+                # Subsplash-specific selectors
+                'div[class*="kit"]',
+                'div[class*="subsplash"]',
+                'div[class*="wrmm"]',
+                # Generic content selectors
+                'div[class*="content"]',
+                'div[class*="main"]',
+                'div[class*="container"]',
+            ]
+            
+            for selector in event_selectors:
+                elements = soup.select(selector)
+                if elements:
+                    print(f"      🔍 Found {len(elements)} elements with selector: {selector}")
+                    
+                    for element in elements:
+                        event = self._extract_event_from_alternative_element(element, url)
+                        if event:
+                            events.append(event)
+                    
+                    if events:
+                        break  # Found events with this selector
+            
+            # If no events found with selectors, try text-based extraction
+            if not events:
+                print("      🔍 Trying text-based extraction...")
+                text_events = self._extract_events_from_text(soup.get_text())
+                if text_events:
+                    events.extend(text_events)
+            
+            return events
+            
+        except Exception as e:
+            print(f"      ⚠️ Error extracting events from alternative page: {str(e)}")
+            return events
+    
+    def _extract_event_from_alternative_element(self, element, url):
+        """Extract event details from alternative page elements"""
+        try:
+            # Try to find title
+            title = None
+            title_selectors = [
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                '[class*="title"]', '[class*="name"]', '[class*="heading"]',
+                'a[class*="title"]', 'span[class*="title"]'
+            ]
+            
+            for selector in title_selectors:
+                title_elem = element.select_one(selector)
+                if title_elem and title_elem.get_text().strip():
+                    title = title_elem.get_text().strip()
+                    break
+            
+            # Try to find date/time
+            date_time = None
+            date_selectors = [
+                '[class*="date"]', '[class*="time"]', '[class*="datetime"]',
+                '[class*="when"]', '[class*="schedule"]', '[class*="calendar"]',
+                'time', '[datetime]', '[data-date]', '[data-time]'
+            ]
+            
+            for selector in date_selectors:
+                date_elem = element.select_one(selector)
+                if date_elem:
+                    # Try to get datetime attribute first
+                    datetime_attr = date_elem.get('datetime') or date_elem.get('data-date') or date_elem.get('data-time')
+                    if datetime_attr:
+                        date_time = datetime_attr
+                        break
+                    # Fall back to text content
+                    elif date_elem.get_text().strip():
+                        date_time = date_elem.get_text().strip()
+                        break
+            
+            # Try to find description
+            description = None
+            desc_selectors = [
+                '[class*="description"]', '[class*="summary"]', '[class*="content"]',
+                '[class*="details"]', '[class*="text"]', 'p', 'span'
+            ]
+            
+            for selector in desc_selectors:
+                desc_elem = element.select_one(selector)
+                if desc_elem and desc_elem.get_text().strip():
+                    desc_text = desc_elem.get_text().strip()
+                    if desc_text and desc_text != title:
+                        description = desc_text
+                        break
+            
+            # If we have at least a title, create an event
+            if title:
+                # Try to parse the date/time
+                start_time = None
+                end_time = None
+                
+                if date_time:
+                    parsed_time = self._parse_subsplash_datetime(date_time)
+                    if parsed_time:
+                        start_time = parsed_time
+                        # Assume 1 hour duration if no end time specified
+                        end_time = start_time + timedelta(hours=1)
+                
+                # If no date/time found, try to extract from the element's text
+                if not start_time:
+                    element_text = element.get_text()
+                    parsed_time = self._parse_subsplash_datetime(element_text)
+                    if parsed_time:
+                        start_time = parsed_time
+                        end_time = start_time + timedelta(hours=1)
+                
+                if start_time:
+                    return {
+                        'title': title,
+                        'start': start_time,
+                        'end': end_time,
+                        'description': description,
+                        'source': f"Alternative page: {url}"
+                    }
+            
+            return None
+            
+        except Exception as e:
+            print(f"        ⚠️ Error extracting event from alternative element: {str(e)}")
+            return None
+    
+    def _find_embedded_calendar_data(self):
+        """Try to find embedded calendar data in the page"""
+        events = []
+        
+        try:
+            # Try to find any embedded calendar data
+            embedded_urls = [
+                "https://antiochboone.com/calendar/feed",
+                "https://antiochboone.com/calendar/rss",
+                "https://antiochboone.com/events/feed",
+                "https://antiochboone.com/events/rss",
+                "https://antiochboone.com/calendar.ics",
+                "https://antiochboone.com/events.ics",
+                "https://antiochboone.com/calendar.json",
+                "https://antiochboone.com/events.json",
+            ]
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/calendar,application/json,application/rss+xml,text/xml,*/*',
+            }
+            
+            for url in embedded_urls:
+                try:
+                    response = requests.get(url, headers=headers, timeout=30)
+                    if response.status_code == 200:
+                        content_type = response.headers.get('content-type', '')
+                        
+                        if 'json' in content_type:
+                            # Parse JSON calendar data
+                            try:
+                                json_data = response.json()
+                                json_events = self._parse_json_events(json_data)
+                                if json_events:
+                                    events.extend(json_events)
+                                    print(f"        ✅ Found {len(json_events)} events in JSON feed: {url.split('/')[-1]}")
+                            except Exception as e:
+                                print(f"        ⚠️ Error parsing JSON from {url.split('/')[-1]}: {str(e)}")
+                        
+                        elif 'xml' in content_type or 'rss' in content_type:
+                            # Parse XML/RSS calendar data
+                            try:
+                                soup = BeautifulSoup(response.content, 'xml')
+                                xml_events = self._parse_xml_calendar_data(soup)
+                                if xml_events:
+                                    events.extend(xml_events)
+                                    print(f"        ✅ Found {len(xml_events)} events in XML feed: {url.split('/')[-1]}")
+                            except Exception as e:
+                                print(f"        ⚠️ Error parsing XML from {url.split('/')[-1]}: {str(e)}")
+                        
+                        elif 'calendar' in content_type or url.endswith('.ics'):
+                            # Parse iCal calendar data
+                            try:
+                                ical_events = self._parse_ical_calendar_data(response.text)
+                                if ical_events:
+                                    events.extend(ical_events)
+                                    print(f"        ✅ Found {len(ical_events)} events in iCal feed: {url.split('/')[-1]}")
+                            except Exception as e:
+                                print(f"        ⚠️ Error parsing iCal from {url.split('/')[-1]}: {str(e)}")
+                        
+                        else:
+                            print(f"        ⚠️ Unknown content type for {url.split('/')[-1]}: {content_type}")
+                    
+                    else:
+                        print(f"        ❌ HTTP {response.status_code} for {url.split('/')[-1]}")
+                        
+                except Exception as e:
+                    print(f"        ⚠️ Error checking {url.split('/')[-1]}: {str(e)}")
+                    continue
+            
+            return events
+            
+        except Exception as e:
+            print(f"❌ Error finding embedded calendar data: {str(e)}")
+            return events
+    
+    def _parse_xml_calendar_data(self, soup):
+        """Parse XML/RSS calendar data"""
+        events = []
+        
+        try:
+            # Try to find items in RSS feeds
+            items = soup.find_all(['item', 'entry', 'event'])
+            
+            for item in items:
+                try:
+                    # Extract title
+                    title_elem = item.find(['title', 'name', 'summary'])
+                    title = title_elem.get_text().strip() if title_elem else None
+                    
+                    # Extract date/time
+                    date_elem = item.find(['pubdate', 'date', 'datetime', 'time'])
+                    date_text = None
+                    if date_elem:
+                        date_text = date_elem.get('datetime') or date_elem.get_text().strip()
+                    
+                    # Extract description
+                    desc_elem = item.find(['description', 'summary', 'content'])
+                    description = desc_elem.get_text().strip() if desc_elem else None
+                    
+                    if title and date_text:
+                        # Try to parse the date
+                        try:
+                            start_time = parser.parse(date_text)
+                            end_time = start_time + timedelta(hours=1)
+                            
+                            events.append({
+                                'title': title,
+                                'start': start_time,
+                                'end': end_time,
+                                'description': description,
+                                'source': 'XML/RSS feed'
+                            })
+                        except Exception as e:
+                            print(f"          ⚠️ Could not parse date '{date_text}': {str(e)}")
+                            continue
+                
+                except Exception as e:
+                    print(f"          ⚠️ Error parsing XML item: {str(e)}")
+                    continue
+            
+            return events
+            
+        except Exception as e:
+            print(f"❌ Error parsing XML calendar data: {str(e)}")
+            return events
+    
+    def _parse_ical_calendar_data(self, ical_text):
+        """Parse iCal calendar data"""
+        events = []
+        
+        try:
+            # Simple iCal parsing (for basic VEVENT entries)
+            lines = ical_text.split('\n')
+            current_event = {}
+            in_event = False
+            
+            for line in lines:
+                line = line.strip()
+                
+                if line.startswith('BEGIN:VEVENT'):
+                    current_event = {}
+                    in_event = True
+                elif line.startswith('END:VEVENT'):
+                    if current_event.get('title') and current_event.get('start'):
+                        try:
+                            start_time = parser.parse(current_event['start'])
+                            end_time = parser.parse(current_event['end']) if current_event.get('end') else start_time + timedelta(hours=1)
+                            
+                            events.append({
+                                'title': current_event['title'],
+                                'start': start_time,
+                                'end': end_time,
+                                'description': current_event.get('description'),
+                                'source': 'iCal feed'
+                            })
+                        except Exception as e:
+                            print(f"          ⚠️ Could not parse iCal event dates: {str(e)}")
+                            continue
+                    
+                    in_event = False
+                    current_event = {}
+                
+                elif in_event and ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.upper()
+                    
+                    if key == 'SUMMARY':
+                        current_event['title'] = value
+                    elif key == 'DTSTART':
+                        current_event['start'] = value
+                    elif key == 'DTEND':
+                        current_event['end'] = value
+                    elif key == 'DESCRIPTION':
+                        current_event['description'] = value
+            
+            return events
+            
+        except Exception as e:
+            print(f"❌ Error parsing iCal calendar data: {str(e)}")
+            return events
 
 def main():
     """Main function for GitHub Actions"""
