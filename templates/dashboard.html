@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsplash Calendar Bridge - Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        
+        .dashboard-header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .dashboard-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .dashboard-subtitle {
+            color: #6c757d;
+            font-size: 1.2rem;
+        }
+        
+        .status-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .status-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 15px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .status-card {
+            background: white;
+            border-radius: 6px;
+            padding: 20px;
+            border-left: 4px solid #007bff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .status-card.success {
+            border-left-color: #28a745;
+        }
+        
+        .status-card.error {
+            border-left-color: #dc3545;
+        }
+        
+        .status-card.syncing {
+            border-left-color: #ffc107;
+        }
+        
+        .status-label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+        
+        .status-value {
+            font-size: 1.1rem;
+            color: #6c757d;
+        }
+        
+        .actions-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .action-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 0 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .action-btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        
+        .action-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .widgets-section {
+            margin-bottom: 30px;
+        }
+        
+        .widgets-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .widgets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .widget-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+        
+        .widget-card:hover {
+            border-color: #007bff;
+            transform: translateY(-2px);
+        }
+        
+        .widget-name {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+        }
+        
+        .widget-description {
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+        
+        .widget-link {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+        
+        .widget-link:hover {
+            background: #0056b3;
+        }
+        
+        .footer {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1 class="dashboard-title">Subsplash Calendar Bridge</h1>
+            <p class="dashboard-subtitle">Automated calendar synchronization dashboard</p>
+        </div>
+        
+        <div class="status-section">
+            <h2 class="status-title">System Status</h2>
+            <div class="status-grid">
+                <div class="status-card" id="syncStatus">
+                    <div class="status-label">Sync Status</div>
+                    <div class="status-value" id="syncStatusValue">Loading...</div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">Last Sync</div>
+                    <div class="status-value" id="lastSyncValue">Loading...</div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">Next Sync</div>
+                    <div class="status-value" id="nextSyncValue">Loading...</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="actions-section">
+            <button class="action-btn" id="syncBtn" onclick="triggerSync()">Trigger Manual Sync</button>
+            <button class="action-btn" onclick="refreshStatus()">Refresh Status</button>
+        </div>
+        
+        <div class="widgets-section">
+            <h2 class="widgets-title">Calendar Widgets</h2>
+            <div class="widgets-grid">
+                <div class="widget-card">
+                    <div class="widget-name">Weekly View</div>
+                    <div class="widget-description">TimeGrid and List views for weekly events</div>
+                    <a href="/widget/weekly" class="widget-link">Open Widget</a>
+                </div>
+                <div class="widget-card">
+                    <div class="widget-name">Monthly View</div>
+                    <div class="widget-description">Month grid view for monthly events</div>
+                    <a href="/widget/monthly" class="widget-link">Open Widget</a>
+                </div>
+                <div class="widget-card">
+                    <div class="widget-name">Multi-Month View</div>
+                    <div class="widget-description">Quarterly and annual multi-month grid</div>
+                    <a href="/widget/quarterly" class="widget-link">Open Widget</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Powered by Subsplash Calendar Bridge | Automatically syncing Subsplash events to Google Calendar</p>
+        </div>
+    </div>
+
+    <script>
+        // Load initial status
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshStatus();
+        });
+        
+        // Refresh system status
+        function refreshStatus() {
+            fetch('/api/sync/status')
+                .then(response => response.json())
+                .then(data => {
+                    updateStatusDisplay(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching status:', error);
+                    document.getElementById('syncStatusValue').textContent = 'Error';
+                });
+        }
+        
+        // Update status display
+        function updateStatusDisplay(data) {
+            const syncStatusEl = document.getElementById('syncStatus');
+            const syncStatusValueEl = document.getElementById('syncStatusValue');
+            const lastSyncEl = document.getElementById('lastSyncValue');
+            const nextSyncEl = document.getElementById('nextSyncValue');
+            
+            // Update sync status
+            syncStatusValueEl.textContent = data.status;
+            syncStatusEl.className = 'status-card ' + data.status;
+            
+            // Update last sync
+            if (data.last_sync) {
+                const lastSync = new Date(data.last_sync);
+                lastSyncEl.textContent = lastSync.toLocaleString();
+            } else {
+                lastSyncEl.textContent = 'Never';
+            }
+            
+            // Update next sync
+            if (data.next_sync) {
+                const nextSync = new Date(data.next_sync);
+                nextSyncEl.textContent = nextSync.toLocaleString();
+            } else {
+                nextSyncEl.textContent = 'Unknown';
+            }
+        }
+        
+        // Trigger manual sync
+        function triggerSync() {
+            const syncBtn = document.getElementById('syncBtn');
+            syncBtn.disabled = true;
+            syncBtn.textContent = 'Syncing...';
+            
+            fetch('/api/sync/trigger', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Sync completed successfully!');
+                } else {
+                    alert('Sync failed: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error triggering sync:', error);
+                alert('Error triggering sync: ' + error.message);
+            })
+            .finally(() => {
+                syncBtn.disabled = false;
+                syncBtn.textContent = 'Trigger Manual Sync';
+                refreshStatus();
+            });
+        }
+        
+        // Auto-refresh status every 30 seconds
+        setInterval(refreshStatus, 30000);
+    </script>
+</body>
+</html>

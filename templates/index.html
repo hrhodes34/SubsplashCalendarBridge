@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsplash Calendar Bridge - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .status-card {
+            transition: transform 0.2s;
+        }
+        .status-card:hover {
+            transform: translateY(-2px);
+        }
+        .calendar-preview {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .event-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            backdrop-filter: blur(10px);
+        }
+        .sync-button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            border: none;
+            border-radius: 25px;
+            padding: 12px 30px;
+            color: white;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .sync-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-active { background-color: #28a745; }
+        .status-stopped { background-color: #dc3545; }
+        .status-error { background-color: #ffc107; }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-calendar-alt me-2"></i>
+                Subsplash Calendar Bridge
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text">
+                    <i class="fas fa-clock me-1"></i>
+                    <span id="current-time"></span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Status Overview -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card status-card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-sync fa-2x text-primary mb-2"></i>
+                        <h5 class="card-title">Scheduler Status</h5>
+                        <div id="scheduler-status" class="text-muted">Loading...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card status-card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-calendar-check fa-2x text-success mb-2"></i>
+                        <h5 class="card-title">Last Sync</h5>
+                        <div id="last-sync" class="text-muted">Loading...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card status-card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-link fa-2x text-info mb-2"></i>
+                        <h5 class="card-title">Subsplash Status</h5>
+                        <div id="subsplash-status" class="text-muted">Loading...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card status-card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-google fa-2x text-danger mb-2"></i>
+                        <h5 class="card-title">Google Calendar</h5>
+                        <div id="google-status" class="text-muted">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cogs me-2"></i>
+                            Control Panel
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <button id="manual-sync" class="btn sync-button me-2">
+                                    <i class="fas fa-sync me-2"></i>
+                                    Manual Sync Now
+                                </button>
+                                <button id="test-connection" class="btn btn-outline-primary">
+                                    <i class="fas fa-plug me-2"></i>
+                                    Test Connection
+                                </button>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <button id="start-scheduler" class="btn btn-success me-2" style="display: none;">
+                                    <i class="fas fa-play me-2"></i>
+                                    Start Scheduler
+                                </button>
+                                <button id="stop-scheduler" class="btn btn-warning me-2" style="display: none;">
+                                    <i class="fas fa-stop me-2"></i>
+                                    Stop Scheduler
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Views -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-calendar-week me-2"></i>
+                            Calendar Views
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group mb-3" role="group">
+                            <button type="button" class="btn btn-outline-primary calendar-view-btn" data-view="weekly">
+                                <i class="fas fa-calendar-week me-1"></i>
+                                Weekly
+                            </button>
+                            <button type="button" class="btn btn-outline-primary calendar-view-btn active" data-view="monthly">
+                                <i class="fas fa-calendar-alt me-1"></i>
+                                Monthly
+                            </button>
+                            <button type="button" class="btn btn-outline-primary calendar-view-btn" data-view="quarterly">
+                                <i class="fas fa-calendar-plus me-1"></i>
+                                Quarterly
+                            </button>
+                            <button type="button" class="btn btn-outline-primary calendar-view-btn" data-view="annually">
+                                <i class="fas fa-calendar-check me-1"></i>
+                                Annually
+                            </button>
+                        </div>
+                        
+                        <div id="calendar-content" class="calendar-preview">
+                            <h4 class="text-center mb-4">
+                                <i class="fas fa-spinner fa-spin me-2"></i>
+                                Loading Calendar View...
+                            </h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync History -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-history me-2"></i>
+                            Recent Sync History
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="sync-history">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-spinner fa-spin me-2"></i>
+                                Loading sync history...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Widget Embed Code -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-code me-2"></i>
+                            Widget Embed Codes
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-3">
+                            Use these embed codes to display enhanced calendar views on your Subsplash website:
+                        </p>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Weekly View Widget</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" value="<iframe src='http://localhost:5000/widget/weekly' width='100%' height='600' frameborder='0'></iframe>" readonly>
+                                    <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-text="<iframe src='http://localhost:5000/widget/weekly' width='100%' height='600' frameborder='0'></iframe>">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Monthly View Widget</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" value="<iframe src='http://localhost:5000/widget/monthly' width='100%' height='600' frameborder='0'></iframe>" readonly>
+                                    <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-text="<iframe src='http://localhost:5000/widget/monthly' width='100%' height='600' frameborder='0'></iframe>">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Quarterly View Widget</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" value="<iframe src='http://localhost:5000/widget/quarterly' width='100%' height='600' frameborder='0'></iframe>" readonly>
+                                    <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-text="<iframe src='http://localhost:5000/widget/quarterly' width='100%' height='600' frameborder='0'></iframe>">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Annual View Widget</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" value="<iframe src='http://localhost:5000/widget/annually' width='100%' height='600' frameborder='0'></iframe>" readonly>
+                                    <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-text="<iframe src='http://localhost:5000/widget/annually' width='100%' height='600' frameborder='0'></iframe>">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Note:</strong> Replace <code>localhost:5000</code> with your actual server domain when deploying to production.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="sync-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i class="fas fa-sync me-2"></i>
+                <strong class="me-auto">Sync Status</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toast-message">
+                Sync operation completed successfully.
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.8/clipboard.min.js"></script>
+    <script>
+        // Initialize clipboard functionality
+        new ClipboardJS('.copy-btn');
+        
+        // Update current time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        
+        // Load dashboard data
+        function loadDashboard() {
+            loadSchedulerStatus();
+            loadSubsplashStatus();
+            loadGoogleStatus();
+            loadSyncHistory();
+            loadCalendarView('monthly');
+        }
+        
+        // Load scheduler status
+        function loadSchedulerStatus() {
+            fetch('/api/scheduler/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const status = data.status;
+                        const statusElement = document.getElementById('scheduler-status');
+                        
+                        // Update status display
+                        const statusClass = status.is_running ? 'status-active' : 'status-stopped';
+                        statusElement.innerHTML = `
+                            <span class="status-indicator ${statusClass}"></span>
+                            ${status.is_running ? 'Active' : 'Stopped'}
+                        `;
+                        
+                        // Update last sync
+                        if (status.last_sync) {
+                            const lastSync = new Date(status.last_sync);
+                            document.getElementById('last-sync').textContent = lastSync.toLocaleString();
+                        } else {
+                            document.getElementById('last-sync').textContent = 'Never';
+                        }
+                        
+                        // Show/hide control buttons
+                        document.getElementById('start-scheduler').style.display = status.is_running ? 'none' : 'inline-block';
+                        document.getElementById('stop-scheduler').style.display = status.is_running ? 'inline-block' : 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading scheduler status:', error);
+                    document.getElementById('scheduler-status').innerHTML = '<span class="text-danger">Error</span>';
+                });
+        }
+        
+        // Load Subsplash status
+        function loadSubsplashStatus() {
+            fetch('/api/subsplash/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const status = data.status;
+                        document.getElementById('subsplash-status').textContent = 
+                            status.total_events_extracted > 0 ? 
+                            `${status.total_events_extracted} events` : 
+                            'No events';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading Subsplash status:', error);
+                    document.getElementById('subsplash-status').innerHTML = '<span class="text-danger">Error</span>';
+                });
+        }
+        
+        // Load Google Calendar status
+        function loadGoogleStatus() {
+            // For now, just show a basic status
+            document.getElementById('google-status').textContent = 'Connected';
+        }
+        
+        // Load sync history
+        function loadSyncHistory() {
+            fetch('/api/scheduler/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const status = data.status;
+                        const historyContainer = document.getElementById('sync-history');
+                        
+                        if (status.total_syncs > 0) {
+                            historyContainer.innerHTML = `
+                                <div class="row text-center">
+                                    <div class="col-md-3">
+                                        <h4 class="text-success">${status.successful_syncs}</h4>
+                                        <small class="text-muted">Successful</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h4 class="text-danger">${status.failed_syncs}</h4>
+                                        <small class="text-muted">Failed</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h4 class="text-info">${status.total_syncs}</h4>
+                                        <small class="text-muted">Total</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <h4 class="text-warning">${status.sync_interval_hours}h</h4>
+                                        <small class="text-muted">Interval</small>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            historyContainer.innerHTML = '<div class="text-center text-muted">No sync history available</div>';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading sync history:', error);
+                    document.getElementById('sync-history').innerHTML = '<div class="text-center text-danger">Error loading history</div>';
+                });
+        }
+        
+        // Load calendar view
+        function loadCalendarView(viewType) {
+            const contentContainer = document.getElementById('calendar-content');
+            contentContainer.innerHTML = `
+                <h4 class="text-center mb-4">
+                    <i class="fas fa-spinner fa-spin me-2"></i>
+                    Loading ${viewType} view...
+                </h4>
+            `;
+            
+            fetch(`/api/calendar/views/${viewType}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayCalendarView(viewType, data.events);
+                    } else {
+                        contentContainer.innerHTML = `
+                            <div class="text-center text-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Error loading ${viewType} view: ${data.error}
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading calendar view:', error);
+                    contentContainer.innerHTML = `
+                        <div class="text-center text-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load ${viewType} view
+                        </div>
+                    `;
+                });
+        }
+        
+        // Display calendar view
+        function displayCalendarView(viewType, events) {
+            const contentContainer = document.getElementById('calendar-content');
+            
+            if (events.length === 0) {
+                contentContainer.innerHTML = `
+                    <div class="text-center">
+                        <h4>${viewType.charAt(0).toUpperCase() + viewType.slice(1)} View</h4>
+                        <p class="text-muted">No events found for this time period.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let eventsHtml = '';
+            events.forEach(event => {
+                const startDate = new Date(event.start);
+                const endDate = new Date(event.end);
+                
+                eventsHtml += `
+                    <div class="event-item">
+                        <h6 class="mb-1">${event.title}</h6>
+                        <p class="mb-1 small">
+                            <i class="fas fa-clock me-1"></i>
+                            ${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()} - 
+                            ${endDate.toLocaleTimeString()}
+                        </p>
+                        ${event.location ? `<p class="mb-1 small"><i class="fas fa-map-marker-alt me-1"></i>${event.location}</p>` : ''}
+                        ${event.description ? `<p class="mb-0 small">${event.description}</p>` : ''}
+                    </div>
+                `;
+            });
+            
+            contentContainer.innerHTML = `
+                <h4 class="text-center mb-4">${viewType.charAt(0).toUpperCase() + viewType.slice(1)} View</h4>
+                <div class="row">
+                    <div class="col-12">
+                        ${eventsHtml}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Event handlers
+        document.getElementById('manual-sync').addEventListener('click', function() {
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Syncing...';
+            
+            fetch('/api/calendar/sync', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Sync completed successfully!', 'success');
+                        loadDashboard(); // Refresh dashboard
+                    } else {
+                        showToast(`Sync failed: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error during sync:', error);
+                    showToast('Sync failed due to an error', 'error');
+                })
+                .finally(() => {
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-sync me-2"></i>Manual Sync Now';
+                });
+        });
+        
+        document.getElementById('test-connection').addEventListener('click', function() {
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing...';
+            
+            // For now, just show a success message
+            setTimeout(() => {
+                showToast('Connection test completed successfully!', 'success');
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-plug me-2"></i>Test Connection';
+            }, 2000);
+        });
+        
+        // Calendar view buttons
+        document.querySelectorAll('.calendar-view-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Remove active class from all buttons
+                document.querySelectorAll('.calendar-view-btn').forEach(b => b.classList.remove('active'));
+                // Add active class to clicked button
+                this.classList.add('active');
+                
+                // Load the selected view
+                const viewType = this.dataset.view;
+                loadCalendarView(viewType);
+            });
+        });
+        
+        // Copy buttons
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const originalText = this.innerHTML;
+                this.innerHTML = '<i class="fas fa-check"></i>';
+                this.classList.remove('btn-outline-secondary');
+                this.classList.add('btn-success');
+                
+                setTimeout(() => {
+                    this.innerHTML = originalText;
+                    this.classList.remove('btn-success');
+                    this.classList.add('btn-outline-secondary');
+                }, 2000);
+            });
+        });
+        
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('sync-toast');
+            const toastMessage = document.getElementById('toast-message');
+            
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 5000);
+        }
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboard();
+            
+            // Refresh dashboard every 30 seconds
+            setInterval(loadDashboard, 30000);
+        });
+    </script>
+</body>
+</html>

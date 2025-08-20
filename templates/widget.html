@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar Widget</title>
+    
+    <!-- FullCalendar CSS -->
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.10/main.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.10/main.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.10/main.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/list@6.1.10/main.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/multimonth@6.1.10/main.min.css' rel='stylesheet' />
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .calendar-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            max-width: 100%;
+        }
+        
+        .view-controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .view-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .view-btn:hover {
+            background: #0056b3;
+        }
+        
+        .view-btn.active {
+            background: #28a745;
+        }
+        
+        .view-toggle {
+            margin: 10px 0;
+            text-align: center;
+            display: none;
+        }
+        
+        .view-toggle.show {
+            display: block;
+        }
+        
+        .toggle-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            margin: 0 3px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .toggle-btn.active {
+            background: #28a745;
+        }
+        
+        .fc {
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .fc.fc-zoom-small {
+            font-size: 12px;
+        }
+        
+        .fc.fc-zoom-large {
+            font-size: 18px;
+        }
+        
+        .fc-toolbar-title {
+            font-size: 1.5em !important;
+            font-weight: 600;
+        }
+        
+        .fc-button {
+            background: #007bff !important;
+            border-color: #007bff !important;
+        }
+        
+        .fc-button:hover {
+            background: #0056b3 !important;
+            border-color: #0056b3 !important;
+        }
+        
+        .fc-event {
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .fc-event-title {
+            font-weight: 500;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error {
+            color: #dc3545;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .zoom-controls {
+            margin: 10px 0;
+            text-align: center;
+        }
+        
+        .zoom-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            margin: 0 3px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .zoom-btn:hover {
+            opacity: 0.8;
+        }
+        
+        .zoom-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <div class="view-controls">
+            <button class="view-btn active" data-view="weekly" data-type="timeGridWeek">Weekly</button>
+            <button class="view-btn" data-view="monthly" data-type="dayGridMonth">Monthly</button>
+            <button class="view-btn" data-view="multimonth" data-type="multiMonthYear">Multi-Month View</button>
+        </div>
+        
+        <div class="view-toggle" id="viewToggle">
+            <button class="toggle-btn active" data-toggle="timeGridWeek">TimeGrid</button>
+            <button class="toggle-btn" data-toggle="listWeek">List</button>
+        </div>
+        
+        <div class="zoom-controls">
+            <button class="zoom-btn" id="zoomOut">🔍- Zoom Out</button>
+            <button class="zoom-btn" id="zoomReset">🔍 Reset</button>
+            <button class="zoom-btn" id="zoomIn">🔍+ Zoom In</button>
+        </div>
+        
+        <div id="calendar"></div>
+        
+        <div class="loading" id="loading" style="display: none;">
+            Loading calendar events...
+        </div>
+        
+        <div class="error" id="error" style="display: none;"></div>
+    </div>
+
+    <!-- FullCalendar JavaScript -->
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.10/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.10/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.10/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/list@6.1.10/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/multimonth@6.1.10/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.10/main.min.js'></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const calendarEl = document.getElementById('calendar');
+            const loadingEl = document.getElementById('loading');
+            const errorEl = document.getElementById('error');
+            const viewToggle = document.getElementById('viewToggle');
+            
+            let calendar;
+            let currentView = 'weekly';
+            let currentZoom = 'normal';
+            
+            // Initialize calendar
+            function initCalendar(viewType = 'timeGridWeek') {
+                if (calendar) {
+                    calendar.destroy();
+                }
+                
+                const calendarOptions = {
+                    initialView: viewType,
+                    headerToolbar: {
+                        left: 'prev,next today',
+                        center: 'title',
+                        right: ''
+                    },
+                    height: 'auto',
+                    aspectRatio: 1.35,
+                    expandRows: true,
+                    events: function(info, successCallback, failureCallback) {
+                        // Show loading
+                        loadingEl.style.display = 'block';
+                        errorEl.style.display = 'none';
+                        
+                        // Fetch events from our Flask API
+                        fetch(`/api/calendar/events?start=${info.startStr}&end=${info.endStr}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                loadingEl.style.display = 'none';
+                                if (data.success) {
+                                    successCallback(data.events);
+                                } else {
+                                    errorEl.textContent = data.message || 'Failed to load events';
+                                    errorEl.style.display = 'block';
+                                    successCallback([]);
+                                }
+                            })
+                            .catch(error => {
+                                loadingEl.style.display = 'none';
+                                errorEl.textContent = 'Error loading events: ' + error.message;
+                                errorEl.style.display = 'block';
+                                successCallback([]);
+                            });
+                    },
+                    eventClick: function(info) {
+                        // Show event details
+                        alert(`
+Event: ${info.event.title}
+Date: ${info.event.start ? info.event.start.toLocaleDateString() : 'TBD'}
+Time: ${info.event.start ? info.event.start.toLocaleTimeString() : 'TBD'}
+Location: ${info.event.extendedProps.location || 'No location'}
+Description: ${info.event.extendedProps.description || 'No description'}
+                        `);
+                    },
+                    eventDisplay: 'block',
+                    dayMaxEvents: true,
+                    moreLinkClick: 'popover',
+                    buttonText: {
+                        today: 'Today',
+                        month: 'Month',
+                        week: 'Week',
+                        year: 'Year',
+                        list: 'List'
+                    },
+                    views: {
+                        multiMonthYear: {
+                            type: 'multiMonth',
+                            multiMonthMaxColumns: 4,
+                            multiMonthMinWidth: 300
+                        }
+                    },
+                    // List view specific options
+                    listDayFormat: { weekday: 'long', month: 'long', day: 'numeric' },
+                    listDaySideFormat: { year: 'numeric' }
+                };
+                
+                calendar = new FullCalendar.Calendar(calendarEl, calendarOptions);
+                calendar.render();
+            }
+            
+            // Initialize with weekly view
+            initCalendar('timeGridWeek');
+            
+            // Handle main view changes
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Update active button
+                    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Get view type and show/hide toggle
+                    const viewType = this.getAttribute('data-view');
+                    const calendarType = this.getAttribute('data-type');
+                    currentView = viewType;
+                    
+                    // Show toggle only for weekly view
+                    if (viewType === 'weekly') {
+                        viewToggle.classList.add('show');
+                        // Reset toggle buttons
+                        document.querySelectorAll('.toggle-btn').forEach(tb => tb.classList.remove('active'));
+                        document.querySelector('[data-toggle="timeGridWeek"]').classList.add('active');
+                        initCalendar('timeGridWeek');
+                    } else {
+                        viewToggle.classList.remove('show');
+                        if (viewType === 'monthly') {
+                            initCalendar('dayGridMonth');
+                        } else if (viewType === 'multimonth') {
+                            initCalendar('multiMonthYear');
+                        }
+                    }
+                });
+            });
+            
+            // Handle view toggle (TimeGrid vs List for weekly only)
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Update active toggle button
+                    document.querySelectorAll('.toggle-btn').forEach(tb => tb.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Change to the selected view
+                    const toggleType = this.getAttribute('data-toggle');
+                    initCalendar(toggleType);
+                });
+            });
+            
+            // Handle zoom controls
+            document.getElementById('zoomIn').addEventListener('click', function() {
+                if (currentZoom === 'normal') {
+                    currentZoom = 'large';
+                    calendarEl.querySelector('.fc').classList.add('fc-zoom-large');
+                    this.disabled = true;
+                    document.getElementById('zoomOut').disabled = false;
+                } else if (currentZoom === 'small') {
+                    currentZoom = 'normal';
+                    calendarEl.querySelector('.fc').classList.remove('fc-zoom-small');
+                    document.getElementById('zoomOut').disabled = false;
+                }
+            });
+            
+            document.getElementById('zoomOut').addEventListener('click', function() {
+                if (currentZoom === 'normal') {
+                    currentZoom = 'small';
+                    calendarEl.querySelector('.fc').classList.add('fc-zoom-small');
+                    this.disabled = true;
+                    document.getElementById('zoomIn').disabled = false;
+                } else if (currentZoom === 'large') {
+                    currentZoom = 'normal';
+                    calendarEl.querySelector('.fc').classList.remove('fc-zoom-small');
+                    document.getElementById('zoomIn').disabled = false;
+                }
+            });
+            
+            document.getElementById('zoomReset').addEventListener('click', function() {
+                currentZoom = 'normal';
+                const fcEl = calendarEl.querySelector('.fc');
+                if (fcEl) {
+                    fcEl.classList.remove('fc-zoom-small', 'fc-zoom-large');
+                }
+                document.getElementById('zoomIn').disabled = false;
+                document.getElementById('zoomOut').disabled = false;
+            });
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                if (calendar) {
+                    calendar.updateSize();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
