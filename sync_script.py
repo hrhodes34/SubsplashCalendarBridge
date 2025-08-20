@@ -139,23 +139,67 @@ class SubsplashSyncService:
         print(f"📅 Google Calendar ID: {self.target_calendar['google_calendar_id']}")
         
     def authenticate_google(self):
-        """Authenticate with Google Calendar API using Service Account"""
+        """Authenticate with Google Calendar API using OAuth 2.0"""
         try:
-            # Load service account credentials from file created by GitHub Actions
-            if os.path.exists('credentials.json'):
-                # For Service Accounts, we use service_account.Credentials
-                self.credentials = service_account.Credentials.from_service_account_file(
-                    'credentials.json',
-                    scopes=SCOPES
-                )
-                
-                # Build service
-                self.calendar_service = build('calendar', 'v3', credentials=self.credentials)
-                print("✅ Google Calendar authentication successful")
-                return True
-            else:
-                print("❌ credentials.json not found")
+            # Check for OAuth credentials file
+            credentials_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'oauth_credentials.json')
+            token_file = os.getenv('GOOGLE_TOKEN_FILE', 'token.pickle')
+            
+            if not os.path.exists(credentials_file):
+                print(f"❌ OAuth credentials file {credentials_file} not found")
                 return False
+            
+            # Load OAuth 2.0 credentials
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            from google.auth.transport.requests import Request
+            import pickle
+            
+            creds = None
+            
+            # Try to load existing token
+            if os.path.exists(token_file):
+                try:
+                    with open(token_file, 'rb') as token:
+                        creds = pickle.load(token)
+                    print("✅ Loaded existing OAuth token")
+                except Exception as e:
+                    print(f"⚠️ Could not load existing token: {str(e)}")
+                    creds = None
+            
+            # If no valid credentials available, let the user log in
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    print("🔄 Refreshing expired OAuth token...")
+                    creds.refresh(Request())
+                else:
+                    print("🔑 Starting OAuth 2.0 flow...")
+                    # For GitHub Actions, we need to handle headless authentication
+                    if os.getenv('GITHUB_ACTIONS') == 'true':
+                        print("🚀 Running in GitHub Actions - using headless OAuth")
+                        # Create a headless OAuth flow
+                        flow = InstalledAppFlow.from_client_secrets_file(credentials_file, SCOPES)
+                        # This will fail in headless mode, so we need to handle it differently
+                        print("❌ OAuth 2.0 interactive flow not supported in GitHub Actions")
+                        print("💡 Please run this locally first to generate a token.pickle file")
+                        return False
+                    else:
+                        # Local development - interactive flow
+                        flow = InstalledAppFlow.from_client_secrets_file(credentials_file, SCOPES)
+                        creds = flow.run_local_server(port=0)
+                
+                # Save the credentials for the next run
+                try:
+                    with open(token_file, 'wb') as token:
+                        pickle.dump(creds, token)
+                    print("✅ Saved OAuth token for future use")
+                except Exception as e:
+                    print(f"⚠️ Could not save token: {str(e)}")
+            
+            # Build service
+            self.calendar_service = build('calendar', 'v3', credentials=creds)
+            self.credentials = creds
+            print("✅ Google Calendar authentication successful")
+            return True
                 
         except Exception as e:
             print(f"❌ Google Calendar authentication failed: {str(e)}")
