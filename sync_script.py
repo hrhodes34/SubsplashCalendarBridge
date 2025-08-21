@@ -285,6 +285,10 @@ class SubsplashCalendarSync:
             # Additional wait for FullCalendar to render events
             logger.info("Waiting 3 seconds for FullCalendar to render events...")
             time.sleep(3)
+            
+            # Analyze the calendar structure to understand the layout
+            self._analyze_calendar_structure(calendar_type)
+            
         except TimeoutException:
             logger.warning("❌ Calendar container not found, proceeding anyway...")
             
@@ -315,6 +319,10 @@ class SubsplashCalendarSync:
         # Try the simple, working FullCalendar selector first
         event_selectors = [
             'a.fc-event',  # This is what actually works
+            '.fc-event',   # Any FullCalendar event
+            'a[href*="/event/"]',  # Event links
+            '.fc-daygrid-event',   # Day grid events
+            '.fc-event-harness a'  # Events within harness
         ]
         
         event_elements = []
@@ -494,13 +502,25 @@ class SubsplashCalendarSync:
                 if not title or len(title) < 3:
                     continue
                 
-                # Simple deduplication: if we've seen this title before, skip it
-                if title not in seen_titles:
-                    seen_titles.add(title)
-                    unique_elements.append(element)
-                    logger.debug(f"Added unique event: {title}")
+                # Clean the title for comparison (remove time prefix)
+                clean_title = title
+                if '\n' in title:
+                    parts = title.split('\n')
+                    if len(parts) >= 2:
+                        clean_title = parts[1].strip()
                 else:
-                    logger.debug(f"Skipped duplicate event: {title}")
+                    # Try to extract title without time
+                    parts = title.split()
+                    if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
+                        clean_title = ' '.join(parts[1:])
+                
+                # Simple deduplication: if we've seen this clean title before, skip it
+                if clean_title not in seen_titles:
+                    seen_titles.add(clean_title)
+                    unique_elements.append(element)
+                    logger.debug(f"Added unique event: {clean_title}")
+                else:
+                    logger.debug(f"Skipped duplicate event: {clean_title}")
                     
             except Exception as e:
                 logger.debug(f"Error during deduplication: {e}")
@@ -517,32 +537,106 @@ class SubsplashCalendarSync:
             if not title or len(title) < 3:
                 return None
             
-            # Parse the time from the event text (e.g., "10:30a Early Morning Prayer")
+            # Extract time from the separate fc-event-time element (this is the correct way for FullCalendar)
             time_str = ""
-            if '\n' in title:
-                time_part, event_title = title.split('\n', 1)
-                time_str = time_part.strip()
-                title = event_title.strip()
-            else:
-                # Try to extract time from the beginning of the text
-                parts = title.split()
-                if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
-                    time_str = parts[0]
-                    title = ' '.join(parts[1:])
+            event_title = title
             
-            # Try to find the actual date for this event
+            try:
+                # Look for the time element within this event
+                time_element = event_element.find_element(By.CSS_SELECTOR, '.fc-event-time')
+                if time_element:
+                    time_str = time_element.text.strip()
+                    logger.debug(f"Found time from fc-event-time element: {time_str}")
+                    
+                    # Extract the title from the fc-event-title element
+                    title_element = event_element.find_element(By.CSS_SELECTOR, '.fc-event-title')
+                    if title_element:
+                        event_title = title_element.text.strip()
+                        logger.debug(f"Found title from fc-event-title element: {event_title}")
+                else:
+                    # Fallback: Parse the time from the event text (e.g., "10:30a Early Morning Prayer" or "6:30a\nEarly Morning Prayer")
+                    if '\n' in title:
+                        parts = title.split('\n')
+                        if len(parts) >= 2:
+                            time_str = parts[0].strip()
+                            event_title = parts[1].strip()
+                        else:
+                            # Fallback: try to extract time from beginning
+                            parts = title.split()
+                            if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
+                                time_str = parts[0]
+                                event_title = ' '.join(parts[1:])
+                    else:
+                        # Try to extract time from the beginning of the text
+                        parts = title.split()
+                        if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
+                            time_str = parts[0]
+                            event_title = ' '.join(parts[1:])
+            except Exception as e:
+                logger.debug(f"Could not find time/title elements, using fallback parsing: {e}")
+                # Fallback: Parse the time from the event text
+                if '\n' in title:
+                    parts = title.split('\n')
+                    if len(parts) >= 2:
+                        time_str = parts[0].strip()
+                        event_title = parts[1].strip()
+                    else:
+                        parts = title.split()
+                        if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
+                            time_str = parts[0]
+                            event_title = ' '.join(parts[1:])
+                else:
+                    parts = title.split()
+                    if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
+                        time_str = parts[0]
+                        event_title = ' '.join(parts[1:])
+            
+            # Try to find the actual date for this event using FullCalendar structure
             date_str = None
             
-            # First try: Look for data-date attribute in ancestor cells
+            # First try: Look for the day cell that contains this event
             try:
-                date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
-                if date_cell:
-                    date_str = date_cell.get_attribute('data-date')
-                    logger.debug(f"Found date from ancestor cell: {date_str}")
-            except:
+                # Find the parent day cell using FullCalendar's structure
+                day_cell = event_element.find_element(By.XPATH, './ancestor::td[contains(@class, "fc-daygrid-day")]')
+                if day_cell:
+                    # Look for data-date attribute first
+                    cell_date = day_cell.get_attribute('data-date')
+                    if cell_date:
+                        date_str = cell_date
+                        logger.info(f"✅ Found date from day cell data-date: {date_str}")
+                    else:
+                        # Try to get date from the day number text
+                        day_number_elem = day_cell.find_element(By.CSS_SELECTOR, '.fc-daygrid-day-number')
+                        if day_number_elem:
+                            day_text = day_number_elem.text.strip()
+                            if day_text and day_text.isdigit():
+                                day_num = int(day_text)
+                                # Parse month name to number
+                                month_num = datetime.strptime(month, '%B').month
+                                year_num = int(year)
+                                date_str = f"{year_num}-{month_num:02d}-{day_num:02d}"
+                                logger.info(f"✅ Constructed date from day number: {date_str}")
+                            else:
+                                logger.warning(f"Day number text is not a digit: '{day_text}'")
+                        else:
+                            logger.warning("Could not find day number element")
+                else:
+                    logger.warning("Could not find day cell")
+            except Exception as e:
+                logger.warning(f"Error finding day cell: {e}")
                 pass
             
-            # Second try: Look for date in parent elements
+            # Second try: Look for data-date attribute in ancestor cells
+            if not date_str:
+                try:
+                    date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
+                    if date_cell:
+                        date_str = date_cell.get_attribute('data-date')
+                        logger.debug(f"Found date from ancestor cell: {date_str}")
+                except:
+                    pass
+            
+            # Third try: Look for date in parent elements
             if not date_str:
                 try:
                     parent_elements = event_element.find_elements(By.XPATH, './ancestor::*')
@@ -558,7 +652,7 @@ class SubsplashCalendarSync:
                 except:
                     pass
             
-            # Third try: Use the current month/year context as fallback
+            # Fourth try: Use the current month/year context as fallback
             if not date_str:
                 try:
                     # Parse month name to number
@@ -566,14 +660,14 @@ class SubsplashCalendarSync:
                     year_num = int(year)
                     # Use the first day of the month as a fallback
                     date_str = f"{year_num}-{month_num:02d}-01"
-                    logger.warning(f"Using fallback date for event '{title}': {date_str}")
+                    logger.warning(f"Using fallback date for event '{event_title}': {date_str}")
                 except:
                     # Use current date as fallback
                     date_str = datetime.now().strftime('%Y-%m-%d')
-                    logger.warning(f"Using current date as fallback for event '{title}': {date_str}")
+                    logger.warning(f"Using current date as fallback for event '{event_title}': {date_str}")
             
             if not date_str:
-                logger.warning(f"Could not determine date for event: {title}")
+                logger.warning(f"Could not determine date for event: {event_title}")
                 return None
             
             # Parse the date
@@ -588,7 +682,7 @@ class SubsplashCalendarSync:
             
             # Create event object
             event = {
-                'title': title,
+                'title': event_title,
                 'start': start_time,
                 'end': end_time,
                 'date': date_str,
@@ -600,10 +694,10 @@ class SubsplashCalendarSync:
                 'all_day': self._is_all_day_event(start_time, end_time),
                 'source': 'Subsplash',
                 'location': 'Antioch Boone',
-                'unique_id': f"{calendar_type}_{date_str}_{title.lower().replace(' ', '_')}"
+                'unique_id': f"{calendar_type}_{date_str}_{event_title.lower().replace(' ', '_')}"
             }
             
-            logger.info(f"✅ Extracted event: '{title}' on {date_str} at {time_str}")
+            logger.info(f"✅ Extracted event: '{event_title}' on {date_str} at {time_str}")
             return event
             
         except Exception as e:
@@ -613,37 +707,73 @@ class SubsplashCalendarSync:
     def _parse_fc_time(self, time_str: str, event_date: datetime) -> Tuple[datetime, datetime]:
         """Parse FullCalendar time format and return start/end times"""
         try:
-            if not time_str:
+            if not time_str or time_str.lower() in ['all day', 'all-day', '']:
                 # No time specified, treat as all-day event
                 start_time = event_date.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_time = start_time + timedelta(days=1)
                 return start_time, end_time
             
-            # Parse time formats like "6:30a", "5:15p", "10:00"
+            # Parse time formats like "6:30a", "5:15p", "10:00", "6:30am", "5:15pm"
             time_str = time_str.lower().strip()
             
-            # Handle AM/PM
-            if 'a' in time_str:
+            # Handle AM/PM variations
+            is_am = False
+            is_pm = False
+            
+            if 'a' in time_str and 'm' not in time_str:
+                # Handle "6:30a" format
                 time_str = time_str.replace('a', '').strip()
-                hour = int(time_str.split(':')[0])
+                is_am = True
+            elif 'am' in time_str:
+                # Handle "6:30am" format
+                time_str = time_str.replace('am', '').strip()
+                is_am = True
+            elif 'p' in time_str and 'm' not in time_str:
+                # Handle "5:15p" format
+                time_str = time_str.replace('p', '').strip()
+                is_pm = True
+            elif 'pm' in time_str:
+                # Handle "5:15pm" format
+                time_str = time_str.replace('pm', '').strip()
+                is_pm = True
+            
+            # Parse hour and minute
+            if ':' in time_str:
+                hour, minute = map(int, time_str.split(':'))
+            else:
+                # Handle "6a" format (just hour)
+                hour = int(time_str)
+                minute = 0
+            
+            # Apply AM/PM logic
+            if is_am:
                 if hour == 12:
                     hour = 0
-                minute = int(time_str.split(':')[1])
-            elif 'p' in time_str:
-                time_str = time_str.replace('p', '').strip()
-                hour = int(time_str.split(':')[0])
+            elif is_pm:
                 if hour != 12:
                     hour += 12
-                minute = int(time_str.split(':')[1])
-            else:
-                # 24-hour format
-                hour, minute = map(int, time_str.split(':'))
+            # If neither AM nor PM specified, assume 24-hour format
+            
+            # Validate hour and minute
+            if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                logger.warning(f"Invalid time values: hour={hour}, minute={minute}")
+                # Fallback to all-day event
+                start_time = event_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_time = start_time + timedelta(days=1)
+                return start_time, end_time
             
             # Create start time
             start_time = event_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
             
-            # Default duration: 1 hour
-            end_time = start_time + timedelta(hours=1)
+            # Default duration: 1 hour for most events
+            # Special handling for known event types
+            if 'prayer' in event_date.strftime('%A').lower():  # If it's a prayer day
+                if hour < 12:  # Morning prayer
+                    end_time = start_time + timedelta(hours=1)
+                else:  # Evening prayer
+                    end_time = start_time + timedelta(hours=1)
+            else:
+                end_time = start_time + timedelta(hours=1)
             
             return start_time, end_time
             
@@ -662,6 +792,199 @@ class SubsplashCalendarSync:
         return (start_time.hour == 0 and start_time.minute == 0 and 
                 end_time.hour == 0 and end_time.minute == 0)
     
+    def _detect_weekly_recurring_events(self, events: List[Dict], calendar_type: str) -> List[Dict]:
+        """Detect weekly recurring events and expand them for the next few months"""
+        expanded_events = []
+        
+        # Known weekly recurring events based on your actual schedule
+        weekly_patterns = {
+            'Early Morning Prayer': {
+                'time': '6:30a',
+                'days': ['Thursday'],  # Thursdays only
+                'duration_hours': 1,
+                'frequency': 'weekly'
+            },
+            'Prayer Set': {
+                'time': '5:15p',
+                'days': ['Tuesday'],  # Tuesdays only
+                'duration_hours': 1,
+                'frequency': 'weekly'
+            },
+            'BAM': {
+                'time': '7:15a',
+                'days': [],  # No specific days - monthly only
+                'duration_hours': 1,
+                'frequency': 'monthly'
+            }
+        }
+        
+        # Group events by title to detect patterns
+        event_groups = {}
+        for event in events:
+            event_title = event['title']
+            if event_title not in event_groups:
+                event_groups[event_title] = []
+            event_groups[event_title].append(event)
+        
+        # Analyze each group for weekly patterns
+        for event_title, event_list in event_groups.items():
+            if len(event_list) < 2:
+                # Single event, just add it
+                expanded_events.extend(event_list)
+                continue
+            
+            # Sort events by date
+            event_list.sort(key=lambda x: x['date'])
+            
+            # Check if this matches a known weekly pattern
+            if event_title in weekly_patterns:
+                pattern = weekly_patterns[event_title]
+                logger.info(f"Detected known weekly pattern for '{event_title}': {pattern['days']}")
+                
+                # Get the base date from the first event
+                try:
+                    base_date = datetime.strptime(event_list[0]['date'], '%Y-%m-%d')
+                except:
+                    expanded_events.extend(event_list)
+                    continue
+                
+                # Expand for the next 3 months (12 weeks)
+                for week in range(1, 13):
+                    for day_name in pattern['days']:
+                        # Calculate the next occurrence of this day
+                        target_date = self._get_next_weekday(base_date, day_name, week)
+                        
+                        if target_date:
+                            # Parse the time from the pattern
+                            time_parts = pattern['time'].split(':')
+                            hour = int(time_parts[0])
+                            minute = int(time_parts[1].replace('a', '').replace('p', ''))
+                            
+                            # Create the recurring event
+                            start_time = target_date.replace(
+                                hour=hour,
+                                minute=minute,
+                                second=0, microsecond=0
+                            )
+                            
+                            # Handle AM/PM
+                            if 'a' in pattern['time']:
+                                if start_time.hour == 12:
+                                    start_time = start_time.replace(hour=0)
+                            elif 'p' in pattern['time']:
+                                if start_time.hour != 12:
+                                    start_time = start_time.replace(hour=start_time.hour + 12)
+                            
+                            end_time = start_time + timedelta(hours=pattern['duration_hours'])
+                            
+                            recurring_event = {
+                                'title': event_title,
+                                'start': start_time,
+                                'end': end_time,
+                                'date': start_time.strftime('%Y-%m-%d'),
+                                'time': pattern['time'],
+                                'month': start_time.strftime('%B'),
+                                'year': str(start_time.year),
+                                'calendar_type': calendar_type,
+                                'url': event_list[0]['url'],
+                                'all_day': False,
+                                'source': 'Subsplash',
+                                'location': 'Antioch Boone',
+                                'unique_id': f"{calendar_type}_{start_time.strftime('%Y-%m-%d')}_{event_title.lower().replace(' ', '_')}",
+                                'recurring': True,
+                                'pattern': f"Weekly on {', '.join(pattern['days'])}"
+                            }
+                            
+                            expanded_events.append(recurring_event)
+                            logger.info(f"✅ Added recurring event: {event_title} on {start_time.strftime('%Y-%m-%d')} at {pattern['time']}")
+                
+                # Also add the original scraped events
+                expanded_events.extend(event_list)
+                
+            else:
+                # Unknown pattern, just add the events as-is
+                expanded_events.extend(event_list)
+                logger.info(f"No known weekly pattern for '{event_title}', adding {len(event_list)} events as-is")
+        
+        logger.info(f"Expanded {len(events)} events to {len(expanded_events)} total events (including recurring)")
+        return expanded_events
+    
+    def _get_next_weekday(self, base_date: datetime, target_day: str, weeks_ahead: int) -> Optional[datetime]:
+        """Get the date of a specific weekday, weeks ahead from base date"""
+        try:
+            # Convert day name to number (Monday=0, Sunday=6)
+            day_map = {
+                'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3,
+                'Friday': 4, 'Saturday': 5, 'Sunday': 6
+            }
+            
+            target_day_num = day_map.get(target_day)
+            if target_day_num is None:
+                return None
+            
+            # Calculate days to add
+            current_day = base_date.weekday()
+            days_to_add = (target_day_num - current_day + 7) % 7 + (weeks_ahead * 7)
+            
+            target_date = base_date + timedelta(days=days_to_add)
+            return target_date
+            
+        except Exception as e:
+            logger.warning(f"Error calculating next weekday: {str(e)}")
+            return None
+
+    def _analyze_calendar_structure(self, calendar_type: str):
+        """Analyze the calendar structure to understand how events are organized"""
+        try:
+            logger.info("🔍 Analyzing calendar structure...")
+            
+            # Look for the calendar grid
+            calendar_grid = self.browser.find_elements(By.CSS_SELECTOR, '.fc-daygrid-body, .fc-view-container')
+            logger.info(f"Found {len(calendar_grid)} calendar grid elements")
+            
+            # Look for day cells
+            day_cells = self.browser.find_elements(By.CSS_SELECTOR, '.fc-day, .fc-daygrid-day, td[data-date]')
+            logger.info(f"Found {len(day_cells)} day cells")
+            
+            # Analyze a few day cells to understand the structure
+            for i, cell in enumerate(day_cells[:5]):
+                try:
+                    cell_date = cell.get_attribute('data-date')
+                    cell_classes = cell.get_attribute('class')
+                    cell_text = cell.text.strip()[:100] if cell.text else "NO_TEXT"
+                    
+                    logger.info(f"Day cell {i}: date='{cell_date}' classes='{cell_classes}' text='{cell_text}'")
+                    
+                    # Look for events within this cell
+                    events_in_cell = cell.find_elements(By.CSS_SELECTOR, '.fc-event, a[href*="/event/"]')
+                    logger.info(f"  Events in cell: {len(events_in_cell)}")
+                    
+                    for j, event in enumerate(events_in_cell[:3]):
+                        try:
+                            event_text = event.text.strip()[:50] if event.text else "NO_TEXT"
+                            event_href = event.get_attribute('href') or "NO_HREF"
+                            logger.info(f"    Event {j}: text='{event_text}' href='{event_href}'")
+                        except:
+                            logger.info(f"    Event {j}: Error getting info")
+                            
+                except Exception as e:
+                    logger.info(f"Day cell {i}: Error analyzing: {e}")
+            
+            # Look for the month navigation
+            month_elements = self.browser.find_elements(By.CSS_SELECTOR, '.fc-toolbar-title, [class*="month"], [class*="year"]')
+            logger.info(f"Found {len(month_elements)} month/year elements")
+            
+            for i, elem in enumerate(month_elements[:3]):
+                try:
+                    elem_text = elem.text.strip()[:50] if elem.text else "NO_TEXT"
+                    elem_class = elem.get_attribute('class') or "NO_CLASS"
+                    logger.info(f"Month element {i}: class='{elem_class}' text='{elem_text}'")
+                except:
+                    logger.info(f"Month element {i}: Error getting info")
+                    
+        except Exception as e:
+            logger.error(f"Error analyzing calendar structure: {e}")
+
     def scrape_calendar_events(self, calendar_type: str) -> List[Dict]:
         """Scrape events from a specific calendar type for multiple months"""
         all_events = []
@@ -928,10 +1251,13 @@ class SubsplashCalendarSync:
                     logger.info(f"Found {len(events)} events for {calendar_type}")
                     
                     if events:
+                        # Detect and expand recurring events
+                        expanded_events = self._detect_weekly_recurring_events(events, calendar_type)
+                        
                         # Sync to Google Calendar
-                        sync_result = self.sync_events_to_google_calendar(events, calendar_type)
+                        sync_result = self.sync_events_to_google_calendar(expanded_events, calendar_type)
                         sync_results['calendar_results'][calendar_type] = sync_result
-                        sync_results['total_events_processed'] += len(events)
+                        sync_results['total_events_processed'] += len(expanded_events)
                         
                         if sync_result['success']:
                             sync_results['calendars_processed'] += 1
