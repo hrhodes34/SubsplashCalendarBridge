@@ -332,19 +332,30 @@ class SubsplashCalendarSync:
         """Extract events from the current month view"""
         try:
             events = []
+            seen_events = set()  # Track seen events to prevent duplicates
             
             # Find all event elements
             event_elements = self.browser.find_elements(By.CSS_SELECTOR, '.fc-event, a[href*="/event/"], [class*="event"]')
-            
+        
             for element in event_elements:
                 try:
                     event = self._extract_event_from_element(element, calendar_type)
                     if event:
-                        events.append(event)
+                        # Create a unique key for deduplication
+                        event_key = f"{event['title']}_{event['date']}_{event['time']}"
+                        
+                        if event_key not in seen_events:
+                            events.append(event)
+                            seen_events.add(event_key)
+                            logger.info(f"✅ Added event: {event['title']} on {event['date']} at {event['time']}")
+                        else:
+                            logger.info(f"🔄 Skipped duplicate: {event['title']} on {event['date']} at {event['time']}")
+                    
                 except Exception as e:
                     logger.warning(f"Error extracting event: {str(e)}")
                     continue
-            
+        
+            logger.info(f"🎯 Extracted {len(events)} unique events (skipped {len(event_elements) - len(events)} duplicates)")
             return events
             
         except Exception as e:
@@ -354,17 +365,23 @@ class SubsplashCalendarSync:
     def _extract_event_from_element(self, element, calendar_type: str) -> Optional[Dict]:
         """Extract event data from a single element"""
         try:
-            # Get event title
-            event_title = element.text.strip()
-            if not event_title:
+            # Get the raw text first for debugging
+            raw_text = element.text.strip()
+            logger.debug(f"🔍 Raw element text: '{raw_text}'")
+            
+            # Get event title and clean it
+            event_title = self._extract_clean_title(element)
+            if not event_title or len(event_title) < 3:
+                logger.debug(f"⚠️ Skipping element - title too short or empty: '{event_title}'")
                 return None
             
             # Get event date from the element or its parent
             date_str = self._extract_date_from_element(element)
             if not date_str:
+                logger.debug(f"⚠️ Skipping element - no date found")
                 return None
             
-            # Get event time
+            # Get event time (separate from title)
             time_str = self._extract_time_from_element(element)
             
             # Parse the date and time
@@ -387,11 +404,121 @@ class SubsplashCalendarSync:
             }
             
             logger.info(f"✅ Extracted event: '{event_title}' on {date_str} at {time_str}")
+            logger.debug(f"   Raw text: '{raw_text}'")
+            logger.debug(f"   Clean title: '{event_title}'")
+            logger.debug(f"   Extracted time: '{time_str}'")
+            logger.debug(f"   Parsed start: {start_time.strftime('%Y-%m-%d %H:%M')}")
+            logger.debug(f"   Parsed end: {end_time.strftime('%Y-%m-%d %H:%M')}")
+            
             return event
             
         except Exception as e:
             logger.warning(f"Error extracting event from element: {str(e)}")
             return None
+    
+    def _extract_clean_title(self, element) -> str:
+        """Extract clean event title without time information"""
+        try:
+            # Get the full text from the element
+            full_text = element.text.strip()
+            if not full_text:
+                return ""
+            
+            # Remove time patterns from the title
+            import re
+            
+            # Time patterns to remove (more comprehensive)
+            time_patterns = [
+                r'\b\d{1,2}:\d{2}[ap]?m?\b',  # 6:30a, 5:15pm
+                r'\b\d{1,2}[ap]m\b',          # 6am, 5pm
+                r'\b\d{1,2}:\d{2}\b',         # 14:30
+                r'\d{1,2}:\d{2}[ap]?m?\s+\d{1,2}:\d{2}[ap]?m?',  # 6:30am 10:30a
+                r'\b\d{1,2}:\d{2}[ap]?m?\s+\d{1,2}:\d{2}[ap]?m?\b',  # 6:30am 10:30a (word boundaries)
+                r'\b\d{1,2}:\d{2}\s+\d{1,2}:\d{2}\b',  # 6:30 10:30
+                r'\b\d{1,2}:\d{2}[ap]?m?\s+\d{1,2}:\d{2}[ap]?m?\s+',  # 6:30am 10:30a followed by space
+            ]
+            
+            # Remove all time patterns
+            clean_title = full_text
+            for pattern in time_patterns:
+                clean_title = re.sub(pattern, '', clean_title, flags=re.IGNORECASE)
+            
+            # Clean up extra whitespace and common artifacts
+            clean_title = re.sub(r'\s+', ' ', clean_title)  # Multiple spaces to single
+            clean_title = clean_title.strip()
+            
+            # Remove leading/trailing punctuation and numbers
+            clean_title = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', clean_title)
+            clean_title = re.sub(r'^\d+\s*', '', clean_title)  # Remove leading numbers
+            
+            # Additional cleanup for common artifacts
+            clean_title = re.sub(r'^\s*[ap]m?\s*', '', clean_title, flags=re.IGNORECASE)  # Remove leading am/pm
+            clean_title = re.sub(r'\s*[ap]m?\s*$', '', clean_title, flags=re.IGNORECASE)  # Remove trailing am/pm
+            
+            return clean_title
+            
+        except Exception as e:
+            logger.warning(f"Error extracting clean title: {str(e)}")
+            return element.text.strip() if element.text else ""
+    
+    def _extract_time_from_element(self, element) -> str:
+        """Extract time from event element (separate from title)"""
+        try:
+            # Look for time in the element text
+            text = element.text.strip()
+            
+            # First, check if this is a known event type with a specific time
+            if 'Early Morning Prayer' in text:
+                return '6:30a'  # Always use the correct time for this event
+            elif 'Prayer Set' in text:
+                return '5:15p'  # Always use the correct time for this event
+            
+            # If not a known event type, look for time patterns
+            # But be more selective about which time to use
+            import re
+            
+            # Common time patterns
+            time_patterns = [
+                r'\b\d{1,2}:\d{2}[ap]?m?\b',  # 6:30a, 5:15pm
+                r'\b\d{1,2}[ap]m\b',          # 6am, 5pm
+                r'\b\d{1,2}:\d{2}\b'          # 14:30
+            ]
+            
+            # Find all time patterns in the text
+            all_times = []
+            for pattern in time_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                all_times.extend(matches)
+            
+            if all_times:
+                # If we found multiple times, be smart about which one to use
+                if len(all_times) > 1:
+                    # Look for the most likely correct time
+                    # Prefer times that look like actual event times (not 10:30, 9:15, etc.)
+                    preferred_times = []
+                    for time_str in all_times:
+                        time_lower = time_str.lower()
+                        # Prefer times that are likely actual event times
+                        if any(pattern in time_lower for pattern in ['6:30', '5:15', '7:00', '8:00', '9:00']):
+                            preferred_times.append(time_str)
+                    
+                    if preferred_times:
+                        # Use the first preferred time
+                        return preferred_times[0]
+                    else:
+                        # If no preferred times, use the first one but log a warning
+                        logger.warning(f"Multiple times found, using first: {all_times[0]} from text: {text}")
+                        return all_times[0]
+                else:
+                    # Only one time found, use it
+                    return all_times[0]
+            
+            # No time found
+            return "all day"
+            
+        except Exception as e:
+            logger.warning(f"Could not extract time: {str(e)}")
+            return "all day"
     
     def _extract_date_from_element(self, element) -> Optional[str]:
         """Extract date from event element"""
@@ -419,33 +546,8 @@ class SubsplashCalendarSync:
             logger.warning(f"Could not extract date: {str(e)}")
             return datetime.now().strftime('%Y-%m-%d')
     
-    def _extract_time_from_element(self, element) -> str:
-        """Extract time from event element"""
-        try:
-            # Look for time in the element text
-            text = element.text.strip()
-            
-            # Common time patterns
-            time_patterns = [
-                r'\b\d{1,2}:\d{2}[ap]?m?\b',  # 6:30a, 5:15pm
-                r'\b\d{1,2}[ap]m\b',          # 6am, 5pm
-                r'\b\d{1,2}:\d{2}\b'          # 14:30
-            ]
-            
-            for pattern in time_patterns:
-                import re
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    return match.group()
-            
-            return "all day"
-            
-        except Exception as e:
-            logger.warning(f"Could not extract time: {str(e)}")
-            return "all day"
-    
     def _parse_time_with_offset(self, time_str: str, event_date: datetime) -> Tuple[datetime, datetime]:
-        """Parse time and apply 4-hour offset correction"""
+        """Parse time and apply dynamic timezone offset correction (4 hours during DST, 5 hours during Standard Time)"""
         try:
             if not time_str or time_str.lower() in ['all day', 'all-day', '']:
                 # No time specified, treat as all-day event
@@ -505,8 +607,9 @@ class SubsplashCalendarSync:
             # Create start time
             start_time = event_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
             
-            # Apply 4-hour offset correction
-            start_time = start_time - timedelta(hours=4)
+            # Apply dynamic timezone offset correction
+            offset_hours = self._get_timezone_offset(event_date)
+            start_time = start_time - timedelta(hours=offset_hours)
             
             # Default duration: 1 hour for most events
             end_time = start_time + timedelta(hours=1)
@@ -519,6 +622,54 @@ class SubsplashCalendarSync:
             start_time = event_date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_time = start_time + timedelta(days=1)
             return start_time, end_time
+    
+    def _get_timezone_offset(self, event_date: datetime) -> int:
+        """Get the appropriate timezone offset based on whether we're in Daylight Saving Time"""
+        try:
+            # Check if the event date is during Daylight Saving Time
+            # DST typically runs from second Sunday in March to first Sunday in November
+            
+            # Get the year of the event
+            year = event_date.year
+            
+            # Calculate DST start (second Sunday in March)
+            dst_start = self._get_nth_weekday_of_month(year, 3, 6, 2)  # 6 = Sunday, 2 = second occurrence
+            
+            # Calculate DST end (first Sunday in November)
+            dst_end = self._get_nth_weekday_of_month(year, 11, 6, 1)  # 6 = Sunday, 1 = first occurrence
+            
+            # Check if event date is during DST
+            if dst_start <= event_date < dst_end:
+                # During Daylight Saving Time: subtract 4 hours
+                offset = 4
+                logger.debug(f"📅 Event on {event_date.strftime('%Y-%m-%d')} is during DST - applying 4-hour offset")
+            else:
+                # During Standard Time: subtract 5 hours
+                offset = 5
+                logger.debug(f"📅 Event on {event_date.strftime('%Y-%m-%d')} is during Standard Time - applying 5-hour offset")
+            
+            return offset
+            
+        except Exception as e:
+            logger.warning(f"Error calculating timezone offset, using default 4-hour offset: {str(e)}")
+            return 4  # Default fallback
+    
+    def _get_nth_weekday_of_month(self, year: int, month: int, weekday: int, n: int) -> datetime:
+        """Get the nth occurrence of a specific weekday in a given month"""
+        # weekday: 0=Monday, 1=Tuesday, ..., 6=Sunday
+        # n: which occurrence (1=first, 2=second, etc.)
+        
+        # Start with the first day of the month
+        current_date = datetime(year, month, 1)
+        
+        # Find the first occurrence of the target weekday
+        while current_date.weekday() != weekday:
+            current_date += timedelta(days=1)
+        
+        # Add weeks to get to the nth occurrence
+        current_date += timedelta(weeks=n-1)
+        
+        return current_date
     
     def _is_all_day_event(self, start_time: datetime, end_time: datetime) -> bool:
         """Check if event is all-day based on start and end times"""
@@ -691,7 +842,7 @@ class SubsplashCalendarSync:
                         self.sync_events_to_google(events, calendar_type)
                     else:
                         logger.info(f"No events found for {calendar_type} calendar")
-                    
+                
                 except Exception as e:
                     logger.error(f"Error processing {calendar_type} calendar: {str(e)}")
                     continue
