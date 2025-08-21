@@ -52,8 +52,8 @@ class SubsplashCalendarSync:
         self.google_service = None
         
         # Configuration
-        self.test_mode = os.getenv('TEST_MODE', 'true').lower() == 'true'
-        self.max_months_to_check = int(os.getenv('MAX_MONTHS_TO_CHECK', '6'))
+        self.test_mode = os.getenv('TEST_MODE', 'false').lower() == 'true'
+        self.max_months_to_check = int(os.getenv('MAX_MONTHS_TO_CHECK', '24'))
         self.browser_wait_time = int(os.getenv('BROWSER_WAIT_TIME', '15'))
         
         # Calendar configuration
