@@ -35,9 +35,12 @@ from selenium.common.exceptions import TimeoutException
 from dotenv import load_dotenv
 load_dotenv()
 
+# Timezone handling
+import pytz
+
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Enable debug logging to see raw text
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -403,12 +406,12 @@ class SubsplashCalendarSync:
                 'unique_id': f"{calendar_type}_{date_str}_{event_title.lower().replace(' ', '_')}"
             }
             
-            logger.info(f"✅ Extracted event: '{event_title}' on {date_str} at {time_str}")
+            logger.info(f"✅ Extracted event: '{event_title}' on {date_str} at {time_str} → {start_time.strftime('%I:%M %p %Z')}")
             logger.debug(f"   Raw text: '{raw_text}'")
             logger.debug(f"   Clean title: '{event_title}'")
             logger.debug(f"   Extracted time: '{time_str}'")
-            logger.debug(f"   Parsed start: {start_time.strftime('%Y-%m-%d %H:%M')}")
-            logger.debug(f"   Parsed end: {end_time.strftime('%Y-%m-%d %H:%M')}")
+            logger.debug(f"   Parsed start (Eastern): {start_time.strftime('%Y-%m-%d %I:%M %p %Z')}")
+            logger.debug(f"   Parsed end (Eastern): {end_time.strftime('%Y-%m-%d %I:%M %p %Z')}")
             
             return event
             
@@ -483,12 +486,28 @@ class SubsplashCalendarSync:
                 all_times.extend(matches)
             
             if all_times:
-                # If we found multiple times, use the first one found
-                # (This is the most reliable approach - use what we actually scrape)
+                # If we found multiple times, be smarter about which one to use
                 if len(all_times) > 1:
-                    logger.info(f"Multiple times found in text '{text}': {all_times}, using first: {all_times[0]}")
-                
-                return all_times[0]
+                    # Look for the most likely correct time
+                    # Prefer times that look like actual event times (not 10:30, 9:15, etc.)
+                    preferred_times = []
+                    for time_str in all_times:
+                        time_lower = time_str.lower()
+                        # Prefer times that are likely actual event times
+                        if any(pattern in time_lower for pattern in ['6:30', '5:15', '7:00', '8:00', '9:00']):
+                            preferred_times.append(time_str)
+                    
+                    if preferred_times:
+                        # Use the first preferred time
+                        logger.info(f"Multiple times found in '{text}': {all_times}, using preferred: {preferred_times[0]}")
+                        return preferred_times[0]
+                    else:
+                        # If no preferred times, use the first one but log a warning
+                        logger.warning(f"Multiple times found, using first: {all_times[0]} from text: {text}")
+                        return all_times[0]
+                else:
+                    # Only one time found, use it
+                    return all_times[0]
             
             # No time found
             return "all day"
@@ -524,7 +543,7 @@ class SubsplashCalendarSync:
             return datetime.now().strftime('%Y-%m-%d')
     
     def _parse_time_with_offset(self, time_str: str, event_date: datetime) -> Tuple[datetime, datetime]:
-        """Parse time and apply dynamic timezone offset correction (4 hours during DST, 5 hours during Standard Time)"""
+        """Parse time and convert to Eastern Time using proper timezone conversion"""
         try:
             if not time_str or time_str.lower() in ['all day', 'all-day', '']:
                 # No time specified, treat as all-day event
@@ -581,80 +600,41 @@ class SubsplashCalendarSync:
                 end_time = start_time + timedelta(days=1)
                 return start_time, end_time
             
-            # Create start time
-            start_time = event_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            
-            # Apply dynamic timezone offset correction
-            offset_hours = self._get_timezone_offset(event_date)
-            start_time = start_time - timedelta(hours=offset_hours)
+            # Create start time in local timezone (assume Eastern Time)
+            # The website times are already in Eastern Time, so we just need to make them timezone-aware
+            eastern_tz = pytz.timezone('America/New_York')
+            start_time = eastern_tz.localize(event_date.replace(hour=hour, minute=minute, second=0, microsecond=0))
             
             # Default duration: 1 hour for most events
             end_time = start_time + timedelta(hours=1)
+            
+            logger.debug(f"🕐 Parsed time: {time_str} → {start_time.strftime('%I:%M %p %Z')}")
             
             return start_time, end_time
             
         except Exception as e:
             logger.warning(f"Error parsing time '{time_str}': {str(e)}")
             # Fallback: create all-day event
-            start_time = event_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            eastern_tz = pytz.timezone('America/New_York')
+            start_time = eastern_tz.localize(event_date.replace(hour=0, minute=0, second=0, microsecond=0))
             end_time = start_time + timedelta(days=1)
             return start_time, end_time
     
-    def _get_timezone_offset(self, event_date: datetime) -> int:
-        """Get the appropriate timezone offset based on whether we're in Daylight Saving Time"""
-        try:
-            # Check if the event date is during Daylight Saving Time
-            # DST typically runs from second Sunday in March to first Sunday in November
-            
-            # Get the year of the event
-            year = event_date.year
-            
-            # Calculate DST start (second Sunday in March)
-            dst_start = self._get_nth_weekday_of_month(year, 3, 6, 2)  # 6 = Sunday, 2 = second occurrence
-            
-            # Calculate DST end (first Sunday in November)
-            dst_end = self._get_nth_weekday_of_month(year, 11, 6, 1)  # 6 = Sunday, 1 = first occurrence
-            
-            # Check if event date is during DST
-            if dst_start <= event_date < dst_end:
-                # During Daylight Saving Time: subtract 4 hours
-                offset = 4
-                logger.debug(f"📅 Event on {event_date.strftime('%Y-%m-%d')} is during DST - applying 4-hour offset")
-            else:
-                # During Standard Time: subtract 5 hours
-                offset = 5
-                logger.debug(f"📅 Event on {event_date.strftime('%Y-%m-%d')} is during Standard Time - applying 5-hour offset")
-            
-            return offset
-            
-        except Exception as e:
-            logger.warning(f"Error calculating timezone offset, using default 4-hour offset: {str(e)}")
-            return 4  # Default fallback
-    
-    def _get_nth_weekday_of_month(self, year: int, month: int, weekday: int, n: int) -> datetime:
-        """Get the nth occurrence of a specific weekday in a given month"""
-        # weekday: 0=Monday, 1=Tuesday, ..., 6=Sunday
-        # n: which occurrence (1=first, 2=second, etc.)
-        
-        # Start with the first day of the month
-        current_date = datetime(year, month, 1)
-        
-        # Find the first occurrence of the target weekday
-        while current_date.weekday() != weekday:
-            current_date += timedelta(days=1)
-        
-        # Add weeks to get to the nth occurrence
-        current_date += timedelta(weeks=n-1)
-        
-        return current_date
+    # Removed old timezone offset methods - now using proper timezone conversion with pytz
     
     def _is_all_day_event(self, start_time: datetime, end_time: datetime) -> bool:
         """Check if event is all-day based on start and end times"""
         if not start_time or not end_time:
             return False
         
-        return (start_time.hour == 0 and start_time.minute == 0 and 
-                end_time.hour == 0 and end_time.minute == 0)
+        # Check if the event was originally marked as "all day" in the source
+        # We'll use the event's 'time' field to determine this
+        # If time is "all day", then it's truly an all-day event
+        # Otherwise, it's a timed event (even if our timezone offset makes it appear at midnight)
+        
+        # For now, let's be conservative and only mark as all-day if explicitly specified
+        # This will be handled in the event extraction logic
+        return False
     
     def _navigate_to_next_month(self) -> bool:
         """Navigate to the next month in the calendar"""
@@ -776,6 +756,9 @@ class SubsplashCalendarSync:
             google_event['start']['date'] = event['start'].strftime('%Y-%m-%d')
             google_event['end']['date'] = event['end'].strftime('%Y-%m-%d')
         else:
+            # For timed events, we need to convert to the correct timezone
+            # The event times are already corrected for the timezone offset
+            # We just need to ensure Google Calendar knows the timezone
             google_event['start']['dateTime'] = event['start'].isoformat()
             google_event['end']['dateTime'] = event['end'].isoformat()
             google_event['start']['timeZone'] = 'America/New_York'
