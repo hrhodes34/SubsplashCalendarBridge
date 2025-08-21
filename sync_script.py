@@ -358,6 +358,37 @@ class SubsplashCalendarSync:
                             data_attrs = elem.get_attribute('outerHTML')[:500] if elem.get_attribute('outerHTML') else "NO_HTML"
                             logger.info(f"    HTML preview: {data_attrs}")
                             
+                            # Look for data attributes that might contain real event info
+                            event_id = elem.get_attribute('data-id') or "NO_ID"
+                            href = elem.get_attribute('href') or "NO_HREF"
+                            logger.info(f"    Event ID: {event_id}")
+                            logger.info(f"    Event URL: {href}")
+                            
+                            # Check if there are any other data attributes
+                            all_attrs = elem.get_attribute('outerHTML')
+                            if all_attrs:
+                                # Look for data-* attributes
+                                import re
+                                data_pattern = r'data-([^=]+)="([^"]*)"'
+                                data_matches = re.findall(data_pattern, all_attrs)
+                                if data_matches:
+                                    logger.info(f"    Data attributes: {data_matches}")
+                                else:
+                                    logger.info(f"    No data attributes found")
+                            
+                            # Look for any hidden elements or spans that might contain real times
+                            hidden_elements = elem.find_elements(By.CSS_SELECTOR, '[style*="display: none"], [hidden], [aria-hidden="true"]')
+                            if hidden_elements:
+                                logger.info(f"    Hidden elements: {len(hidden_elements)}")
+                                for k, hidden_elem in enumerate(hidden_elements[:3]):
+                                    try:
+                                        hidden_text = hidden_elem.text.strip()[:50] if hidden_elem.text else "NO_TEXT"
+                                        hidden_class = hidden_elem.get_attribute('class') or "NO_CLASS"
+                                        logger.info(f"      Hidden {k}: class='{hidden_class}' text='{hidden_text}'")
+                                    except Exception as hidden_e:
+                                        logger.info(f"      Hidden {k}: Error getting info: {hidden_e}")
+                            else:
+                                logger.info(f"    No hidden elements found")
                         except Exception as debug_e:
                             logger.info(f"  Element {i}: Error getting info: {debug_e}")
                     
