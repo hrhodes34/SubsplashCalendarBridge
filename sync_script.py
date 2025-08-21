@@ -474,6 +474,43 @@ class SubsplashCalendarSync:
             logger.warning(f"Could not navigate to next month: {str(e)}")
             return False
     
+    def _event_already_exists(self, calendar_id: str, event: Dict) -> bool:
+        """Check if an event with the same name, date, and time already exists in Google Calendar"""
+        try:
+            # Get the event date for search range
+            event_datetime = datetime.fromisoformat(event['datetime'])
+            
+            # Search for events on the same day
+            time_min = event_datetime.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            time_max = event_datetime.replace(hour=23, minute=59, second=59, microsecond=999999).isoformat()
+            
+            # Query Google Calendar for existing events
+            existing_events = self.google_service.events().list(
+                calendarId=calendar_id,
+                timeMin=time_min,
+                timeMax=time_max,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+            
+            # Check if any existing event matches our event (same title and start time)
+            for existing_event in existing_events.get('items', []):
+                existing_title = existing_event.get('summary', '').strip()
+                existing_start = existing_event.get('start', {}).get('dateTime', '')
+                
+                # Compare title and start time
+                if (existing_title.lower() == event['title'].lower() and 
+                    existing_start == event['datetime']):
+                    logger.debug(f"Found duplicate: {existing_title} at {existing_start}")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Error checking for duplicate events: {str(e)}")
+            # If we can't check for duplicates, err on the side of caution and don't create
+            return False
+    
     def sync_to_google_calendar(self, events: List[Dict], calendar_type: str):
         """Sync scraped events to Google Calendar"""
         if not self.google_service:
@@ -488,8 +525,16 @@ class SubsplashCalendarSync:
         logger.info(f"🔄 Syncing {len(events)} events to Google Calendar: {calendar_id}")
         
         synced_count = 0
+        skipped_count = 0
+        
         for event in events:
             try:
+                # Check if this event already exists (same name, date, and time)
+                if self._event_already_exists(calendar_id, event):
+                    skipped_count += 1
+                    logger.info(f"⏭️  Skipping duplicate: {event['title']} at {event['time']} on {event['date']}")
+                    continue
+                
                 # Create Google Calendar event
                 google_event = {
                     'summary': event['title'],
@@ -525,7 +570,7 @@ class SubsplashCalendarSync:
             except Exception as e:
                 logger.error(f"❌ Unexpected error syncing event {event['title']}: {str(e)}")
         
-        logger.info(f"🎯 Successfully synced {synced_count}/{len(events)} events")
+        logger.info(f"🎯 Successfully synced {synced_count}/{len(events)} events (skipped {skipped_count} duplicates)")
         return synced_count > 0
     
     def run_sync(self):
