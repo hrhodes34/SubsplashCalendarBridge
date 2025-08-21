@@ -318,8 +318,14 @@ class SubsplashCalendarSync:
                 logger.debug(f"No time found in event: {event_text}")
                 return None
             
-            # Parse the time and apply timezone conversion
-            event_time = self._parse_and_convert_time(time_match)
+            # Get the actual date from the calendar day where this event appears
+            event_date = self._get_event_date(event_element)
+            if not event_date:
+                logger.warning(f"Could not determine date for event: {event_text}")
+                return None
+            
+            # Parse the time and apply timezone conversion with the actual date
+            event_time = self._parse_and_convert_time(time_match, event_date)
             if not event_time:
                 return None
             
@@ -327,6 +333,7 @@ class SubsplashCalendarSync:
             event_data = {
                 'title': title,
                 'time': time_match,
+                'date': event_date.strftime('%Y-%m-%d'),
                 'datetime': event_time.isoformat(),
                 'url': event_url,
                 'id': event_id,
@@ -340,7 +347,60 @@ class SubsplashCalendarSync:
             logger.warning(f"Error extracting event data: {str(e)}")
             return None
     
-    def _parse_and_convert_time(self, time_str: str) -> Optional[datetime]:
+    def _get_event_date(self, event_element) -> Optional[datetime]:
+        """Extract the actual date from the calendar day where the event appears"""
+        try:
+            # Find the parent calendar day element that contains this event
+            # FullCalendar typically has a structure like: .fc-day -> .fc-daygrid-day -> .fc-daygrid-day-events -> .fc-event
+            day_element = event_element.find_element(By.XPATH, "./ancestor::td[contains(@class, 'fc-day')]")
+            
+            # Get the date from the day element's data attribute or aria-label
+            date_attr = day_element.get_attribute('data-date')
+            if date_attr:
+                # data-date is typically in YYYY-MM-DD format
+                return datetime.strptime(date_attr, '%Y-%m-%d')
+            
+            # Alternative: look for aria-label with date info
+            aria_label = day_element.get_attribute('aria-label')
+            if aria_label:
+                # aria-label might contain date info like "Tuesday, August 26, 2025"
+                # Try to parse common date formats
+                import re
+                date_patterns = [
+                    r'(\w+), (\w+) (\d{1,2}), (\d{4})',  # Tuesday, August 26, 2025
+                    r'(\w+) (\d{1,2}), (\d{4})',          # August 26, 2025
+                ]
+                
+                for pattern in date_patterns:
+                    match = re.search(pattern, aria_label)
+                    if match:
+                        if len(match.groups()) == 4:
+                            # Tuesday, August 26, 2025
+                            month_name, day, year = match.group(2), match.group(3), match.group(4)
+                        else:
+                            # August 26, 2025
+                            month_name, day, year = match.group(1), match.group(2), match.group(3)
+                        
+                        # Convert month name to number
+                        month_map = {
+                            'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                            'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                            'september': 9, 'october': 10, 'november': 11, 'december': 12
+                        }
+                        
+                        month = month_map.get(month_name.lower())
+                        if month:
+                            return datetime(int(year), month, int(day))
+            
+            # If we can't find the date, log a warning and return None
+            logger.warning(f"Could not extract date from calendar day element")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Error extracting event date: {str(e)}")
+            return None
+    
+    def _parse_and_convert_time(self, time_str: str, event_date: datetime) -> Optional[datetime]:
         """Parse time string and apply timezone conversion (UTC to Eastern Time)"""
         try:
             # Parse time string - handle both formats
@@ -378,9 +438,8 @@ class SubsplashCalendarSync:
             utc_tz = pytz.timezone('UTC')
             est_tz = pytz.timezone('US/Eastern')
             
-            # Create a datetime object for today with the parsed time
-            today = datetime.now().date()
-            event_datetime = datetime.combine(today, parsed_time.time())
+            # Create a datetime object for the actual event date with the parsed time
+            event_datetime = datetime.combine(event_date.date(), parsed_time.time())
             
             # First, treat the time as UTC (this is what the scraper actually gets)
             utc_datetime = utc_tz.localize(event_datetime)
@@ -388,7 +447,7 @@ class SubsplashCalendarSync:
             # Then convert to Eastern Time (this subtracts 4 hours during EDT, 5 hours during EST)
             eastern_datetime = utc_datetime.astimezone(est_tz)
             
-            logger.debug(f"Time conversion: {original_time} UTC -> {utc_datetime} -> {eastern_datetime} Eastern")
+            logger.debug(f"Time conversion: {original_time} on {event_date.strftime('%Y-%m-%d')} UTC -> {utc_datetime} -> {eastern_datetime} Eastern")
             
             return eastern_datetime
             
