@@ -1,0 +1,1061 @@
+<!-- 
+ANTIOCH BOONE ENHANCED CALENDAR EMBED CODE WITH OAUTH2 AUTHENTICATION
+Copy and paste this entire block into your Subsplash webpage where you want the calendar to appear.
+
+IMPORTANT: You must update the following values:
+1. GOOGLE_API_KEY - Your Google Calendar API key
+2. GOOGLE_CLIENT_ID - Your Google OAuth2 Client ID for authentication
+3. CALENDAR_IDS - Your actual calendar IDs
+
+FEATURES:
+- Seamless Google OAuth2 authentication
+- Chrome profile detection and One Tap sign-in
+- Automatic token management and refresh
+- Personal calendar integration
+- Enhanced security and user experience
+-->
+
+<!-- Load Google One Tap Library -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<!-- Calendar Container -->
+<div id="antioch-calendar-container" style="max-width: 1400px; margin: 0 auto; padding: 20px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+    
+    <!-- Calendar Header -->
+    <div style="background: #ffffff; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb;">
+        <h1 style="font-size: 2rem; font-weight: 700; color: #1f2937; margin-bottom: 16px; text-align: center;">Antioch Boone Calendar</h1>
+        <p style="text-align: center; color: #6b7280; margin-bottom: 24px;">Enhanced calendar with multiple views and powerful features</p>
+        
+        <!-- View Controls -->
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: center; margin-bottom: 20px;">
+            <div style="display: flex; gap: 8px; background: #f9fafb; padding: 8px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <button class="view-btn" data-view="dayGridMonth" style="padding: 8px 16px; border: none; background: #2563eb; color: white; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">Monthly</button>
+                <button class="view-btn" data-view="dayGridThreeMonth" style="padding: 8px 16px; border: none; background: transparent; color: #6b7280; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">Quarterly</button>
+                <button class="view-btn" data-view="dayGridYear" style="padding: 8px 16px; border: none; background: transparent; color: #6b7280; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">Annual</button>
+                <button class="view-btn" data-view="listMonth" style="padding: 8px 16px; border: none; background: transparent; color: #6b7280; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">List View</button>
+            </div>
+        </div>
+
+        <!-- Calendar Selection -->
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; margin-bottom: 20px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; justify-content: center;">
+                <button id="selectAllBtn" style="padding: 8px 16px; border: 1px solid #e5e7eb; background: #ffffff; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; color: #1f2937;">Select All</button>
+                <button id="deselectAllBtn" style="padding: 8px 16px; border: 1px solid #e5e7eb; background: #ffffff; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; color: #1f2937;">Deselect All</button>
+            </div>
+            
+            <div id="calendarCheckboxes" style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;">
+                <!-- Calendar checkboxes will be populated here -->
+            </div>
+        </div>
+
+        <!-- Search Section -->
+        <div style="display: flex; gap: 12px; justify-content: center; margin-bottom: 20px;">
+            <input type="text" id="searchInput" placeholder="Search events..." style="padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 16px; min-width: 300px; transition: all 0.2s ease;">
+            <button id="searchBtn" style="padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Search</button>
+        </div>
+
+        <!-- OAuth2 Authentication Section -->
+        <div id="authSection" style="display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; align-items: center;">
+            <div id="signInButton" style="display: block;">
+                <div id="g_id_onload" data-client_id="177843878782-sfhmffuti1i3tvrg5bjsg29vlkh7q9un.apps.googleusercontent.com" data-context="signin" data-ux_mode="popup" data-callback="handleCredentialResponse" data-auto_prompt="false" data-itp_support="true"></div>
+                <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline" data-text="signin_with" data-size="large" data-logo_alignment="left" data-width="300"></div>
+            </div>
+            <div id="userInfo" style="display: none; align-items: center; gap: 12px;">
+                <img id="userAvatar" src="" alt="User" style="width: 32px; height: 32px; border-radius: 50%;">
+                <span id="userName" style="font-weight: 500; color: #1f2937;"></span>
+                <button id="signOutBtn" style="padding: 8px 16px; border: 1px solid #e5e7eb; background: #ffffff; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; color: #dc2626;">Sign Out</button>
+            </div>
+            <div id="authStatus" style="display: none; align-items: center; gap: 8px; font-size: 14px; color: #6b7280;">
+                <div class="auth-loading"></div>
+                <span id="authStatusText">Authenticating...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading and Messages -->
+    <div id="loading" style="display: none; text-align: center; padding: 40px; color: #6b7280;">
+        <div style="border: 3px solid #e5e7eb; border-top: 3px solid #2563eb; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+        <p>Loading calendar events...</p>
+    </div>
+
+    <div id="errorMessage" style="display: none; background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 16px; border-radius: 8px; margin: 16px 0; text-align: center;"></div>
+    <div id="successMessage" style="display: none; background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; padding: 16px; border-radius: 8px; margin: 16px 0; text-align: center;"></div>
+
+    <!-- Calendar Wrapper -->
+    <div style="background: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb;">
+        <div id="calendar"></div>
+    </div>
+</div>
+
+<!-- Event Modal -->
+<div id="eventModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);">
+    <div style="background-color: #ffffff; margin: 5% auto; padding: 32px; border-radius: 12px; width: 90%; max-width: 600px; box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb; position: relative;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb;">
+            <h2 id="modalEventTitle" style="font-size: 1.5rem; font-weight: 700; color: #1f2937;">Event Title</h2>
+            <button id="modalClose" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280; padding: 4px; border-radius: 4px; transition: all 0.2s ease;">&times;</button>
+        </div>
+        <div id="modalEventBody" style="margin-bottom: 24px;">
+            <!-- Event details will be populated here -->
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+            <button id="addToCalendarBtn" style="padding: 10px 20px; border: 1px solid #e5e7eb; background: #2563eb; color: white; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">📅 Add to My Calendar</button>
+            <button id="shareEventBtn" style="padding: 10px 20px; border: 1px solid #e5e7eb; background: #ffffff; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; color: #1f2937;">📤 Share Event</button>
+            <button id="closeModalBtn" style="padding: 10px 20px; border: 1px solid #e5e7eb; background: #ffffff; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s ease; color: #1f2937;">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- FullCalendar CSS -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+
+<!-- FullCalendar JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales-all.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/google-calendar.global.min.js"></script>
+
+<!-- Custom CSS -->
+<style>
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .auth-loading {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #e5e7eb;
+        border-top: 2px solid #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    .calendar-prayer { background-color: #3b82f6 !important; }
+    .calendar-men { background-color: #10b981 !important; }
+    .calendar-women { background-color: #f59e0b !important; }
+    .calendar-college { background-color: #8b5cf6 !important; }
+    .calendar-adt { background-color: #06b6d4 !important; }
+    .calendar-church { background-color: #ef4444 !important; }
+    .calendar-elders { background-color: #84cc16 !important; }
+    .calendar-travel { background-color: #f97316 !important; }
+    .calendar-hub { background-color: #ec4899 !important; }
+    .calendar-kidscamp { background-color: #22c55e !important; }
+    .calendar-lgls { background-color: #a855f7 !important; }
+    .calendar-missions { background-color: #14b8a6 !important; }
+    .calendar-prophetic { background-color: #f43f5e !important; }
+    .calendar-retreats { background-color: #6366f1 !important; }
+    .calendar-staff { background-color: #64748b !important; }
+    .calendar-teachingteam { background-color: #0ea5e9 !important; }
+    .calendar-worship { background-color: #fbbf24 !important; }
+    .calendar-ya { background-color: #34d399 !important; }
+    .calendar-youth { background-color: #60a5fa !important; }
+    
+    .fc-event {
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .fc-event:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    .fc-button {
+        background-color: #2563eb !important;
+        border-color: #2563eb !important;
+        color: white !important;
+    }
+    
+    .fc-button:hover {
+        background-color: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+    }
+    
+    .fc-button:focus {
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+    }
+    
+    .fc-toolbar-title {
+        font-weight: 600 !important;
+        color: #1f2937 !important;
+    }
+    
+    .fc-daygrid-day-number {
+        font-weight: 500 !important;
+    }
+    
+    .fc-list-event-title {
+        font-weight: 500 !important;
+    }
+    
+    .fc-list-event-time {
+        color: #6b7280 !important;
+    }
+    
+    .fc-daygrid-event-dot {
+        border-color: white !important;
+    }
+    
+    .fc-daygrid-day.fc-day-today {
+        background-color: #f0f9ff !important;
+    }
+    
+    .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+        background-color: #2563eb !important;
+        color: white !important;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600 !important;
+    }
+</style>
+
+<!-- Calendar JavaScript -->
+<script>
+// ============================================================================
+// CONFIGURATION - UPDATE THESE VALUES WITH YOUR ACTUAL DATA
+// ============================================================================
+
+const CONFIG = {
+    // Google OAuth2 Configuration
+    GOOGLE_CLIENT_ID: '177843878782-sfhmffuti1i3tvrg5bjsg29vlkh7q9un.apps.googleusercontent.com', // Replace with your actual Google OAuth2 Client ID
+    GOOGLE_API_KEY: 'AIzaSyDsziwqmTqdxpulFhSmR5aa55aKK3HzcKs',
+    
+    // OAuth2 Scopes
+    OAUTH_SCOPES: [
+        'https://www.googleapis.com/auth/calendar.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly',
+        'https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/userinfo.email'
+    ].join(' '),
+    
+    // Calendar IDs from your sync script
+    CALENDARS: {
+        'prayer': 'd0693ad125baad968b86ad667c97943bc3fc6f84cf283186107b9ef3ff5e07a9@group.calendar.google.com',
+        'men': 'b878d99dde022f1b50ebeed8cef2b7ecc77e8b6a14cce053bad48555cd697c83@group.calendar.google.com',
+        'women': '83a924f98220df69f7bd5626a600bfc0c81d6aa975bcfbae3ce97402206d639d@group.calendar.google.com',
+        'college': '594cd005daad2d51f55f90238cc089cead306fdc04018497f7c302a08df14b42@group.calendar.google.com',
+        'adt': '9244a2507b8a61d620e158d783a2f0c806acc8662512918a5bf7786f206b00d5@group.calendar.google.com',
+        'church': '4ef64ec419fad17080fb65f1e567fc9b86138532c83a2ab225b57b2a98a2b462@group.calendar.google.com',
+        'elders': '84710e2c335f267cd7fe02964445eaef73888110cd1179271d8bd5eed8bbab37@group.calendar.google.com',
+        'travel': '10dc28310ee5420007453d12f18e4fe5c12756d4549a14053838f4e3e68cfb6e@group.calendar.google.com',
+        'hub': '7a94f9812f955b1ac98dded4699ea0bbe76ce3354aaadc14bec07c8e3ec3b378@group.calendar.google.com',
+        'kidscamp': '0cac316821b79bcdb885b63ef2658fecb9f9bad3e115fc10e9aa15915251663f@group.calendar.google.com',
+        'lgls': '131c80933409066991e7680f7c001c3eb78fd42323538066ae656c2f9ab709e0@group.calendar.google.com',
+        'missions': 'bf2f225a2fbc2399c66faf2d5a33e3483101c8beb55aa85615ba90331f61eecd@group.calendar.google.com',
+        'prophetic': 'b56856780644862c7de70c813ef4f6f06fec91d707548a0027374dfbedae0a4b@group.calendar.google.com',
+        'retreats': '08fce09d2705af29cf606dc9049f15a60c2b3aaf006a254c4127aa40f8d078a7@group.calendar.google.com',
+        'staff': '33b7be29206486eb56c69d577f89dad2702e7379fdc929a5b5bf219c9c3fae79@group.calendar.google.com',
+        'teachingteam': 'ebafedf41e7351f33e58c72650f253a7866a45d8abf831f4e57312d2d079656d@group.calendar.google.com',
+        'worship': '7e3bd3a5340e1267c2e8acc15738d2b5452bf0c06b7b6fe48984d5807559fa6c@group.calendar.google.com',
+        'ya': '13a01b81b1717b3d3a82fc884c8bfd2bd774c147a713cf7825789bd6a8ae08f6@group.calendar.google.com',
+        'youth': '68400792cf27cac627763eb9d9922a4cdd02ccd237577a9bf6652f1b42fd4966@group.calendar.google.com'
+    },
+    
+    // Calendar display names
+    CALENDAR_NAMES: {
+        'prayer': 'Prayer',
+        'men': 'Men',
+        'women': 'Women',
+        'college': 'College',
+        'adt': 'ADT',
+        'church': 'Church',
+        'elders': 'Elders',
+        'travel': 'Travel',
+        'hub': 'Hub',
+        'kidscamp': 'Kids Camp',
+        'lgls': 'LGLS',
+        'missions': 'Missions',
+        'prophetic': 'Prophetic',
+        'retreats': 'Retreats',
+        'staff': 'Staff',
+        'teachingteam': 'Teaching Team',
+        'worship': 'Worship',
+        'ya': 'Young Adults',
+        'youth': 'Youth'
+    }
+};
+
+// ============================================================================
+// CALENDAR IMPLEMENTATION
+// ============================================================================
+
+// Global variables
+let calendar;
+let selectedCalendars = new Set(Object.keys(CONFIG.CALENDARS));
+let currentView = 'dayGridMonth';
+let searchQuery = '';
+let accessToken = null;
+let userProfile = null;
+
+// ============================================================================
+// OAUTH2 AUTHENTICATION
+// ============================================================================
+
+// Initialize Google OAuth2
+function initializeOAuth2() {
+    // Check if user is already signed in
+    const savedToken = localStorage.getItem('google_access_token');
+    const savedProfile = localStorage.getItem('google_user_profile');
+    
+    if (savedToken && savedProfile) {
+        try {
+            accessToken = savedToken;
+            userProfile = JSON.parse(savedProfile);
+            showUserInfo();
+            hideSignInButton();
+        } catch (error) {
+            console.error('Error parsing saved profile:', error);
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_user_profile');
+        }
+    }
+    
+    // Wait for Google One Tap to load
+    if (typeof google !== 'undefined' && google.accounts) {
+        initializeGoogleOneTap();
+    } else {
+        // Wait for Google One Tap to load
+        window.addEventListener('load', function() {
+            if (typeof google !== 'undefined' && google.accounts) {
+                initializeGoogleOneTap();
+            }
+        });
+    }
+}
+
+// Initialize Google One Tap
+function initializeGoogleOneTap() {
+    google.accounts.id.initialize({
+        client_id: CONFIG.GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+        auto_select: true,
+        cancel_on_tap_outside: false,
+        prompt_parent_id: 'authSection',
+        state_cookie_domain: window.location.hostname,
+        ux_mode: 'popup',
+        context: 'signin'
+    });
+    
+    // Try silent authentication
+    google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            console.log('Silent authentication not available');
+        }
+    });
+}
+
+// Handle OAuth2 credential response
+function handleCredentialResponse(response) {
+    const credential = response.credential;
+    
+    // Decode the JWT token to get user info
+    const payload = JSON.parse(atob(credential.split('.')[1]));
+    userProfile = {
+        name: payload.name,
+        email: payload.email,
+        picture: payload.picture,
+        sub: payload.sub
+    };
+    
+    // Store user profile
+    localStorage.setItem('google_user_profile', JSON.stringify(userProfile));
+    
+    // Show loading state
+    showAuthStatus('Authenticating with Google...');
+    
+    // For Google One Tap, we need to use the credential directly
+    // The credential is an ID token that can be used for authentication
+    accessToken = credential;
+    localStorage.setItem('google_access_token', accessToken);
+    
+    hideAuthStatus();
+    showUserInfo();
+    hideSignInButton();
+    showSuccess('Successfully signed in!');
+    
+    // Update UI and refresh calendar
+    updateAuthUI();
+    refreshCalendarEvents();
+}
+
+// Show user information
+function showUserInfo() {
+    if (userProfile) {
+        document.getElementById('userAvatar').src = userProfile.picture;
+        document.getElementById('userName').textContent = userProfile.name;
+        document.getElementById('userInfo').style.display = 'flex';
+    }
+}
+
+// Hide sign-in button
+function hideSignInButton() {
+    document.getElementById('signInButton').style.display = 'none';
+}
+
+// Show sign-in button
+function showSignInButton() {
+    document.getElementById('signInButton').style.display = 'block';
+    document.getElementById('userInfo').style.display = 'none';
+}
+
+// Sign out user
+function signOut() {
+    accessToken = null;
+    userProfile = null;
+    localStorage.removeItem('google_access_token');
+    localStorage.removeItem('google_user_profile');
+    
+    showSignInButton();
+    showSuccess('Successfully signed out!');
+    
+    // Update UI and refresh calendar
+    updateAuthUI();
+    refreshCalendarEvents();
+}
+
+// Refresh calendar events with authentication
+async function refreshCalendarEvents() {
+    if (calendar) {
+        calendar.refetchEvents();
+    }
+}
+
+// Refresh calendar with new event sources
+function refreshCalendar() {
+    if (calendar) {
+        calendar.removeAllEventSources();
+        calendar.addEventSource(getEventSources());
+    }
+}
+
+// Enhanced calendar refresh with OAuth2
+function refreshCalendarWithAuth() {
+    if (accessToken) {
+        console.log('Refreshing calendar with OAuth2 authentication');
+    } else {
+        console.log('Refreshing calendar with API key authentication');
+    }
+    
+    refreshCalendar();
+}
+
+// Check authentication status and update UI
+function updateAuthUI() {
+    if (accessToken && userProfile) {
+        showUserInfo();
+        hideSignInButton();
+        // Enable personal calendar features
+        const addToCalendarBtn = document.getElementById('addToCalendarBtn');
+        if (addToCalendarBtn) {
+            addToCalendarBtn.style.opacity = '1';
+            addToCalendarBtn.style.cursor = 'pointer';
+            addToCalendarBtn.title = 'Add this event to your personal Google Calendar';
+        }
+    } else {
+        showSignInButton();
+        // Disable personal calendar features
+        const addToCalendarBtn = document.getElementById('addToCalendarBtn');
+        if (addToCalendarBtn) {
+            addToCalendarBtn.style.opacity = '0.5';
+            addToCalendarBtn.style.cursor = 'not-allowed';
+            addToCalendarBtn.title = 'Sign in with Google to add events to your personal calendar';
+        }
+    }
+}
+
+// Show authentication status
+function showAuthStatus(message) {
+    const authStatus = document.getElementById('authStatus');
+    const authStatusText = document.getElementById('authStatusText');
+    if (authStatus && authStatusText) {
+        authStatusText.textContent = message;
+        authStatus.style.display = 'flex';
+    }
+}
+
+// Hide authentication status
+function hideAuthStatus() {
+    const authStatus = document.getElementById('authStatus');
+    if (authStatus) {
+        authStatus.style.display = 'none';
+    }
+}
+
+         // Initialize the application
+         document.addEventListener('DOMContentLoaded', function() {
+             // Initialize OAuth2 first
+             initializeOAuth2();
+             
+             // Test Google Calendar API connection first
+             testGoogleCalendarAPI();
+             
+             initializeCalendar();
+             setupEventListeners();
+             populateCalendarCheckboxes();
+             updateAuthUI(); // Update UI based on auth status
+             showLoading();
+         });
+
+         // Test Google Calendar API connection
+         function testGoogleCalendarAPI() {
+             // Test with primary calendar first to verify API key works
+             const testUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events?key=${CONFIG.GOOGLE_API_KEY}&timeMin=${new Date().toISOString()}&maxResults=1`;
+             
+             fetch(testUrl)
+                 .then(response => {
+                     if (!response.ok) {
+                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                     }
+                     return response.json();
+                 })
+                 .then(data => {
+                     console.log('Google Calendar API test successful:', data);
+                     showSuccess('Google Calendar API connection successful!');
+                 })
+                 .catch(error => {
+                     console.error('Google Calendar API test failed:', error);
+                     showError(`Google Calendar API connection failed: ${error.message}. Check your API key and calendar permissions.`);
+                 });
+         }
+         
+         // Initialize FullCalendar
+         function initializeCalendar() {
+    const calendarEl = document.getElementById('calendar');
+    
+    calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: currentView,
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,dayGridThreeMonth,dayGridYear,listMonth'
+        },
+                         views: {
+                     dayGridThreeMonth: {
+                         type: 'dayGrid',
+                         duration: { months: 3 },
+                         buttonText: '3 Months',
+                         dayMaxEvents: 3,
+                         fixedWeekCount: false
+                     },
+                     dayGridYear: {
+                         type: 'dayGrid',
+                         duration: { months: 12 },
+                         buttonText: 'Year',
+                         dayMaxEvents: 2,
+                         fixedWeekCount: false
+                     }
+                 },
+        height: 'auto',
+        expandRows: true,
+        dayMaxEvents: true,
+        eventDisplay: 'block',
+        eventClick: handleEventClick,
+        eventDidMount: handleEventDidMount,
+        loading: function(isLoading) {
+            if (isLoading) {
+                showLoading();
+            } else {
+                hideLoading();
+            }
+        },
+                         eventSources: getEventSources(),
+                 eventSourceFailure: function(error) {
+                     console.error('Event source error:', error);
+                     showError('Failed to load calendar events. Please try again.');
+                 },
+                 // Add error handling for individual event sources
+                 eventSourceSuccess: function(content, xhr) {
+                     console.log('Event source loaded successfully:', content);
+                     hideLoading();
+                 }
+    });
+
+    calendar.render();
+}
+
+         // Get event sources based on selected calendars
+         function getEventSources() {
+             const sources = [];
+             
+             selectedCalendars.forEach(calendarId => {
+                 if (CONFIG.CALENDARS[calendarId]) {
+                     const eventSource = {
+                         googleCalendarId: CONFIG.CALENDARS[calendarId],
+                         className: `calendar-${calendarId}`,
+                         failure: function(error) {
+                             console.error(`Failed to load calendar ${calendarId}:`, error);
+                             showError(`Failed to load ${CONFIG.CALENDAR_NAMES[calendarId]} calendar. Check console for details.`);
+                         },
+                         success: function(content, xhr) {
+                             console.log(`Successfully loaded ${calendarId} calendar:`, content);
+                         },
+                         eventDataTransform: function(event) {
+                             return {
+                                 id: event.id,
+                                 title: event.title,
+                                 start: event.start,
+                                 end: event.end,
+                                 allDay: event.allDay,
+                                 description: event.description,
+                                 location: event.location,
+                                 url: event.url,
+                                 backgroundColor: getCalendarColor(calendarId),
+                                 borderColor: getCalendarColor(calendarId),
+                                 textColor: '#ffffff',
+                                 extendedProps: {
+                                     calendarId: calendarId,
+                                     calendarName: CONFIG.CALENDAR_NAMES[calendarId]
+                                 }
+                             };
+                         }
+                     };
+                     
+                     // For now, always use API key authentication since Google One Tap provides ID tokens, not access tokens
+                     // The ID token can be used for user identification but not for API access
+                     eventSource.googleCalendarApiKey = CONFIG.GOOGLE_API_KEY;
+                     console.log(`Using API key authentication for ${calendarId} calendar`);
+                     
+                     sources.push(eventSource);
+                     
+                     // Add calendar checkbox styling
+                     const checkbox = document.getElementById(`cal_${calendarId}`);
+                     if (checkbox) {
+                         checkbox.style.accentColor = getCalendarColor(calendarId);
+                     }
+                 }
+             });
+             
+             return sources;
+         }
+
+// Get calendar color
+function getCalendarColor(calendarId) {
+    const colors = {
+        'prayer': '#3b82f6',
+        'men': '#10b981',
+        'women': '#f59e0b',
+        'college': '#8b5cf6',
+        'adt': '#06b6d4',
+        'church': '#ef4444',
+        'elders': '#84cc16',
+        'travel': '#f97316',
+        'hub': '#ec4899',
+        'kidscamp': '#22c55e',
+        'lgls': '#a855f7',
+        'missions': '#14b8a6',
+        'prophetic': '#f43f5e',
+        'retreats': '#6366f1',
+        'staff': '#64748b',
+        'teachingteam': '#0ea5e9',
+        'worship': '#fbbf24',
+        'ya': '#34d399',
+        'youth': '#60a5fa'
+    };
+    return colors[calendarId] || '#6b7280';
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    // View controls
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const view = this.dataset.view;
+            changeView(view);
+            
+            // Update active state
+            document.querySelectorAll('.view-btn').forEach(b => {
+                b.style.background = 'transparent';
+                b.style.color = '#6b7280';
+            });
+            this.style.background = '#2563eb';
+            this.style.color = 'white';
+        });
+    });
+
+    // Select all/deselect all
+    document.getElementById('selectAllBtn').addEventListener('click', selectAllCalendars);
+    document.getElementById('deselectAllBtn').addEventListener('click', deselectAllCalendars);
+
+    // Search
+    document.getElementById('searchBtn').addEventListener('click', performSearch);
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            performSearch();
+        }
+    });
+
+    // Modal controls
+    document.getElementById('modalClose').addEventListener('click', closeEventModal);
+    document.getElementById('closeModalBtn').addEventListener('click', closeEventModal);
+    document.getElementById('addToCalendarBtn').addEventListener('click', addToPersonalCalendar);
+    document.getElementById('shareEventBtn').addEventListener('click', shareEvent);
+
+    // Close modal when clicking outside
+    document.getElementById('eventModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeEventModal();
+        }
+    });
+
+    // OAuth2 event listeners
+    document.getElementById('signOutBtn').addEventListener('click', signOut);
+}
+
+// Populate calendar checkboxes
+function populateCalendarCheckboxes() {
+    const container = document.getElementById('calendarCheckboxes');
+    
+    Object.entries(CONFIG.CALENDAR_NAMES).forEach(([id, name]) => {
+        const checkboxDiv = document.createElement('div');
+        checkboxDiv.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;';
+        checkboxDiv.innerHTML = `
+            <input type="checkbox" id="cal_${id}" value="${id}" checked style="width: 16px; height: 16px; accent-color: #2563eb;">
+            <label for="cal_${id}" style="font-weight: 500; cursor: pointer; user-select: none;">${name}</label>
+        `;
+        
+        const checkbox = checkboxDiv.querySelector('input');
+        checkbox.addEventListener('change', function() {
+            if (this.checked) {
+                selectedCalendars.add(this.value);
+            } else {
+                selectedCalendars.delete(this.value);
+            }
+            refreshCalendarWithAuth();
+        });
+        
+        container.appendChild(checkboxDiv);
+    });
+}
+
+// Select all calendars
+function selectAllCalendars() {
+    selectedCalendars = new Set(Object.keys(CONFIG.CALENDARS));
+    document.querySelectorAll('#calendarCheckboxes input[type="checkbox"]').forEach(cb => {
+        cb.checked = true;
+    });
+    refreshCalendarWithAuth();
+}
+
+// Deselect all calendars
+function deselectAllCalendars() {
+    selectedCalendars.clear();
+    document.querySelectorAll('#calendarCheckboxes input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+    });
+    refreshCalendarWithAuth();
+}
+
+// Change calendar view
+function changeView(view) {
+    currentView = view;
+    calendar.changeView(view);
+}
+
+// Perform search
+function performSearch() {
+    searchQuery = document.getElementById('searchInput').value.trim();
+    
+    if (searchQuery) {
+        // Filter events based on search query
+        calendar.getEvents().forEach(event => {
+            const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                (event.extendedProps.description && event.extendedProps.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                                (event.extendedProps.location && event.extendedProps.location.toLowerCase().includes(searchQuery.toLowerCase()));
+            
+            if (matchesSearch) {
+                event.setProp('backgroundColor', '#fbbf24');
+                event.setProp('borderColor', '#f59e0b');
+            } else {
+                const originalColor = getCalendarColor(event.extendedProps.calendarId);
+                event.setProp('backgroundColor', originalColor);
+                event.setProp('borderColor', originalColor);
+            }
+        });
+        
+        showSuccess(`Search results for: "${searchQuery}"`);
+    } else {
+        // Clear search highlighting
+        calendar.getEvents().forEach(event => {
+            const originalColor = getCalendarColor(event.extendedProps.calendarId);
+            event.setProp('backgroundColor', originalColor);
+            event.setProp('borderColor', originalColor);
+        });
+    }
+}
+
+// Refresh calendar with new event sources
+function refreshCalendar() {
+    calendar.removeAllEventSources();
+    calendar.addEventSource(getEventSources());
+}
+
+// Handle event click
+function handleEventClick(info) {
+    const event = info.event;
+    showEventModal(event);
+}
+
+// Handle event mount
+function handleEventDidMount(info) {
+    const event = info.event;
+    const element = info.el;
+    
+    // Add calendar name to event title for better identification
+    if (event.extendedProps.calendarName) {
+        element.title = `${event.title} (${event.extendedProps.calendarName})`;
+    }
+}
+
+// Show event modal
+function showEventModal(event) {
+    const modal = document.getElementById('eventModal');
+    const title = document.getElementById('modalEventTitle');
+    const body = document.getElementById('modalEventBody');
+    
+    // Store current event ID for OAuth2 operations
+    window.currentEventId = event.id;
+    
+    title.textContent = event.title;
+    
+    const startDate = event.start ? new Date(event.start).toLocaleString() : 'TBD';
+    const endDate = event.end ? new Date(event.end).toLocaleString() : 'TBD';
+    const description = event.extendedProps.description || 'No description available';
+    const location = event.extendedProps.location || 'No location specified';
+    const calendarName = event.extendedProps.calendarName || 'Unknown Calendar';
+    
+    body.innerHTML = `
+        <div style="display: flex; margin-bottom: 16px; align-items: flex-start;">
+            <div style="font-weight: 600; color: #6b7280; min-width: 100px; margin-right: 16px;">Calendar:</div>
+            <div style="color: #1f2937; flex: 1;">${calendarName}</div>
+        </div>
+        <div style="display: flex; margin-bottom: 16px; align-items: flex-start;">
+            <div style="font-weight: 600; color: #6b7280; min-width: 100px; margin-right: 16px;">Start:</div>
+            <div style="color: #1f2937; flex: 1;">${startDate}</div>
+        </div>
+        <div style="display: flex; margin-bottom: 16px; align-items: flex-start;">
+            <div style="font-weight: 600; color: #6b7280; min-width: 100px; margin-right: 16px;">End:</div>
+            <div style="color: #1f2937; flex: 1;">${endDate}</div>
+        </div>
+        <div style="display: flex; margin-bottom: 16px; align-items: flex-start;">
+            <div style="font-weight: 600; color: #6b7280; min-width: 100px; margin-right: 16px;">Location:</div>
+            <div style="color: #1f2937; flex: 1;">${location}</div>
+        </div>
+        <div style="display: flex; margin-bottom: 16px; align-items: flex-start;">
+            <div style="font-weight: 600; color: #6b7280; min-width: 100px; margin-right: 16px;">Description:</div>
+            <div style="color: #1f2937; flex: 1;">${description}</div>
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// Close event modal
+function closeEventModal() {
+    document.getElementById('eventModal').style.display = 'none';
+}
+
+// Add event to personal calendar
+function addToPersonalCalendar() {
+    if (!accessToken) {
+        showError('Please sign in with Google to add events to your personal calendar.');
+        return;
+    }
+    
+    const eventTitle = document.getElementById('modalEventTitle').textContent;
+    const eventBody = document.getElementById('modalEventBody').textContent;
+    
+    // Get the current event from the modal
+    const currentEvent = calendar.getEventById(window.currentEventId);
+    if (!currentEvent) {
+        showError('Event information not available.');
+        return;
+    }
+    
+    // Create event for user's personal calendar
+    const personalEvent = {
+        summary: eventTitle,
+        description: eventBody,
+        start: {
+            dateTime: currentEvent.start.toISOString(),
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        },
+        end: {
+            dateTime: currentEvent.end ? currentEvent.end.toISOString() : new Date(currentEvent.start.getTime() + 60 * 60 * 1000).toISOString(),
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        },
+        location: currentEvent.extendedProps.location || '',
+        source: {
+            title: 'Antioch Boone Calendar',
+            url: window.location.href
+        }
+    };
+    
+    // Add to user's primary calendar
+    fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(personalEvent)
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        }
+        throw new Error('Failed to add event to calendar');
+    })
+    .then(data => {
+        showSuccess('Event successfully added to your personal calendar!');
+        console.log('Event added:', data);
+    })
+    .catch(error => {
+        console.error('Error adding event:', error);
+        showError('Failed to add event to your calendar. Please try again.');
+    });
+}
+
+// Share event
+function shareEvent() {
+    if (navigator.share) {
+        navigator.share({
+            title: document.getElementById('modalEventTitle').textContent,
+            text: 'Check out this event from Antioch Boone!',
+            url: window.location.href
+        });
+    } else {
+        // Fallback: copy to clipboard
+        const eventInfo = `${document.getElementById('modalEventTitle').textContent}\nCheck out this event from Antioch Boone!\n${window.location.href}`;
+        navigator.clipboard.writeText(eventInfo).then(() => {
+            showSuccess('Event information copied to clipboard!');
+        });
+    }
+}
+
+// Utility functions
+function showLoading() {
+    document.getElementById('loading').style.display = 'block';
+}
+
+function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+}
+
+function showError(message) {
+    const errorEl = document.getElementById('errorMessage');
+    errorEl.textContent = message;
+    errorEl.style.display = 'block';
+    setTimeout(() => {
+        errorEl.style.display = 'none';
+    }, 5000);
+}
+
+function showSuccess(message) {
+    const successEl = document.getElementById('successMessage');
+    successEl.textContent = message;
+    successEl.style.display = 'block';
+    setTimeout(() => {
+        successEl.style.display = 'none';
+    }, 3000);
+}
+
+// Handle window resize
+window.addEventListener('resize', function() {
+    if (calendar) {
+        calendar.updateSize();
+    }
+});
+
+// Add CSS animations
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .view-btn:hover:not([style*="background: #2563eb"]) {
+        background: #f3f4f6 !important;
+        color: #374151 !important;
+    }
+    
+    #selectAllBtn:hover, #deselectAllBtn:hover {
+        background: #f3f4f6 !important;
+        border-color: #2563eb !important;
+    }
+    
+    #searchBtn:hover {
+        background: #1d4ed8 !important;
+        transform: translateY(-1px);
+    }
+    
+    #addToCalendarBtn:hover {
+        background: #1d4ed8 !important;
+    }
+    
+    #shareEventBtn:hover, #closeModalBtn:hover {
+        background: #f3f4f6 !important;
+        border-color: #2563eb !important;
+    }
+    
+    #modalClose:hover {
+        background: #f3f4f6 !important;
+        color: #1f2937 !important;
+    }
+    
+    /* Calendar Color Coding */
+    .calendar-prayer { background-color: #3b82f6 !important; border-color: #2563eb !important; }
+    .calendar-men { background-color: #10b981 !important; border-color: #059669 !important; }
+    .calendar-women { background-color: #f59e0b !important; border-color: #d97706 !important; }
+    .calendar-college { background-color: #8b5cf6 !important; border-color: #7c3aed !important; }
+    .calendar-adt { background-color: #06b6d4 !important; border-color: #0891b2 !important; }
+    .calendar-church { background-color: #ef4444 !important; border-color: #dc2626 !important; }
+    .calendar-elders { background-color: #84cc16 !important; border-color: #65a30d !important; }
+    .calendar-travel { background-color: #f97316 !important; border-color: #ea580c !important; }
+    .calendar-hub { background-color: #ec4899 !important; border-color: #db2777 !important; }
+    .calendar-kidscamp { background-color: #22c55e !important; border-color: #16a34a !important; }
+    .calendar-lgls { background-color: #a855f7 !important; border-color: #9333ea !important; }
+    .calendar-missions { background-color: #14b8a6 !important; border-color: #0d9488 !important; }
+    .calendar-prophetic { background-color: #f43f5e !important; border-color: #e11d48 !important; }
+    .calendar-retreats { background-color: #6366f1 !important; border-color: #4f46e5 !important; }
+    .calendar-staff { background-color: #64748b !important; border-color: #475569 !important; }
+    .calendar-teachingteam { background-color: #0ea5e9 !important; border-color: #0284c7 !important; }
+    .calendar-worship { background-color: #fbbf24 !important; border-color: #f59e0b !important; }
+    .calendar-ya { background-color: #34d399 !important; border-color: #10b981 !important; }
+    .calendar-youth { background-color: #60a5fa !important; border-color: #3b82f6 !important; }
+    
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        #antioch-calendar-container {
+            padding: 16px !important;
+        }
+        
+        #antioch-calendar-container > div:first-child {
+            padding: 20px !important;
+        }
+        
+        #antioch-calendar-container h1 {
+            font-size: 1.5rem !important;
+        }
+        
+        .view-btn {
+            padding: 6px 12px !important;
+            font-size: 14px !important;
+        }
+        
+        #searchInput {
+            min-width: auto !important;
+        }
+        
+        #eventModal > div {
+            margin: 10% auto !important;
+            padding: 24px !important;
+            width: 95% !important;
+        }
+    }
+`;
+document.head.appendChild(style);
+</script>

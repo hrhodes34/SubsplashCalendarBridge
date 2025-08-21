@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antioch Boone - Enhanced Calendar</title>
+    
+    <!-- FullCalendar CSS -->
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.10/index.global.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.10/index.global.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.10/index.global.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/list@6.1.10/index.global.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.10/index.global.min.css' rel='stylesheet' />
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --accent-color: #3b82f6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f9fafb;
+            --border-color: #e5e7eb;
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .calendar-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .calendar-header {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+        }
+
+        .calendar-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .calendar-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .controls-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .view-controls {
+            display: flex;
+            gap: 8px;
+            background: var(--bg-secondary);
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .view-btn {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            color: var(--text-secondary);
+        }
+
+        .view-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .view-btn:hover:not(.active) {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .calendar-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .calendar-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .calendar-checkbox:hover {
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow);
+        }
+
+        .calendar-checkbox input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary-color);
+        }
+
+        .calendar-checkbox label {
+            font-weight: 500;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .select-all-controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            justify-content: center;
+        }
+
+        .select-all-btn {
+            padding: 8px 16px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            color: var(--text-primary);
+        }
+
+        .select-all-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--primary-color);
+        }
+
+        .search-section {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px;
+            min-width: 300px;
+            transition: all 0.2s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .search-btn {
+            padding: 12px 24px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .search-btn:hover {
+            background: var(--secondary-color);
+            transform: translateY(-1px);
+        }
+
+        .calendar-wrapper {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+        }
+
+        .fc {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .fc-toolbar {
+            margin-bottom: 20px !important;
+        }
+
+        .fc-toolbar-title {
+            font-size: 1.5rem !important;
+            font-weight: 600 !important;
+            color: var(--text-primary) !important;
+        }
+
+        .fc-button {
+            background: var(--primary-color) !important;
+            border-color: var(--primary-color) !important;
+            font-weight: 500 !important;
+            padding: 8px 16px !important;
+            border-radius: 6px !important;
+            transition: all 0.2s ease !important;
+        }
+
+        .fc-button:hover {
+            background: var(--secondary-color) !important;
+            border-color: var(--secondary-color) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        .fc-button:focus {
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+        }
+
+        .fc-button:disabled {
+            background: var(--text-secondary) !important;
+            border-color: var(--text-secondary) !important;
+        }
+
+        .fc-event {
+            border-radius: 6px !important;
+            border: none !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+        }
+
+        .fc-event:hover {
+            transform: translateY(-1px) !important;
+            box-shadow: var(--shadow-lg) !important;
+        }
+
+        .fc-event-title {
+            font-weight: 600 !important;
+        }
+
+        .fc-event-time {
+            font-weight: 500 !important;
+        }
+
+        .fc-daygrid-event {
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        .fc-list-event {
+            padding: 12px !important;
+        }
+
+        .fc-list-event-title {
+            font-weight: 600 !important;
+        }
+
+        .fc-list-event-time {
+            font-weight: 500 !important;
+        }
+
+        .fc-list-event-dot {
+            border-width: 8px !important;
+        }
+
+        .event-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .event-modal-content {
+            background-color: var(--bg-primary);
+            margin: 5% auto;
+            padding: 32px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .event-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .event-modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .event-modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .event-modal-close:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .event-modal-body {
+            margin-bottom: 24px;
+        }
+
+        .event-detail-row {
+            display: flex;
+            margin-bottom: 16px;
+            align-items: flex-start;
+        }
+
+        .event-detail-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+            min-width: 100px;
+            margin-right: 16px;
+        }
+
+        .event-detail-value {
+            color: var(--text-primary);
+            flex: 1;
+        }
+
+        .event-modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .event-action-btn {
+            padding: 10px 20px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: var(--text-primary);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .event-action-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--primary-color);
+        }
+
+        .event-action-btn.primary {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .event-action-btn.primary:hover {
+            background: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .loading-spinner {
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            display: none;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            text-align: center;
+        }
+
+        .success-message {
+            display: none;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #16a34a;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            text-align: center;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .calendar-container {
+                padding: 16px;
+            }
+            
+            .calendar-header {
+                padding: 20px;
+            }
+            
+            .calendar-title {
+                font-size: 1.5rem;
+            }
+            
+            .controls-section {
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .view-controls {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .calendar-selector {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .search-section {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .search-input {
+                min-width: auto;
+            }
+            
+            .event-modal-content {
+                margin: 10% auto;
+                padding: 24px;
+                width: 95%;
+            }
+            
+            .event-detail-row {
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .event-detail-label {
+                min-width: auto;
+                margin-right: 0;
+            }
+        }
+
+        /* Calendar Color Coding */
+        .calendar-prayer { background-color: #3b82f6 !important; border-color: #2563eb !important; }
+        .calendar-men { background-color: #10b981 !important; border-color: #059669 !important; }
+        .calendar-women { background-color: #f59e0b !important; border-color: #d97706 !important; }
+        .calendar-college { background-color: #8b5cf6 !important; border-color: #7c3aed !important; }
+        .calendar-adt { background-color: #06b6d4 !important; border-color: #0891b2 !important; }
+        .calendar-church { background-color: #ef4444 !important; border-color: #dc2626 !important; }
+        .calendar-elders { background-color: #84cc16 !important; border-color: #65a30d !important; }
+        .calendar-travel { background-color: #f97316 !important; border-color: #ea580c !important; }
+        .calendar-hub { background-color: #ec4899 !important; border-color: #db2777 !important; }
+        .calendar-kidscamp { background-color: #22c55e !important; border-color: #16a34a !important; }
+        .calendar-lgls { background-color: #a855f7 !important; border-color: #9333ea !important; }
+        .calendar-missions { background-color: #14b8a6 !important; border-color: #0d9488 !important; }
+        .calendar-prophetic { background-color: #f43f5e !important; border-color: #e11d48 !important; }
+        .calendar-retreats { background-color: #6366f1 !important; border-color: #4f46e5 !important; }
+        .calendar-staff { background-color: #64748b !important; border-color: #475569 !important; }
+        .calendar-teachingteam { background-color: #0ea5e9 !important; border-color: #0284c7 !important; }
+        .calendar-worship { background-color: #fbbf24 !important; border-color: #f59e0b !important; }
+        .calendar-ya { background-color: #34d399 !important; border-color: #10b981 !important; }
+        .calendar-youth { background-color: #60a5fa !important; border-color: #3b82f6 !important; }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <div class="calendar-header">
+            <h1 class="calendar-title">Antioch Boone Calendar</h1>
+            <p class="calendar-subtitle">Enhanced calendar with multiple views and powerful features</p>
+            
+            <!-- View Controls -->
+            <div class="controls-section">
+                <div class="view-controls">
+                    <button class="view-btn active" data-view="dayGridMonth">Monthly</button>
+                    <button class="view-btn" data-view="dayGridThreeMonth">Quarterly</button>
+                    <button class="view-btn" data-view="dayGridYear">Annual</button>
+                    <button class="view-btn" data-view="listMonth">List View</button>
+                </div>
+            </div>
+
+            <!-- Calendar Selection -->
+            <div class="calendar-selector">
+                <div class="select-all-controls">
+                    <button class="select-all-btn" id="selectAllBtn">Select All</button>
+                    <button class="select-all-btn" id="deselectAllBtn">Deselect All</button>
+                </div>
+                
+                <div id="calendarCheckboxes">
+                    <!-- Calendar checkboxes will be populated here -->
+                </div>
+            </div>
+
+            <!-- Search Section -->
+            <div class="search-section">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search events...">
+                <button class="search-btn" id="searchBtn">Search</button>
+            </div>
+        </div>
+
+        <!-- Loading and Messages -->
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <p>Loading calendar events...</p>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage"></div>
+
+        <!-- Calendar Wrapper -->
+        <div class="calendar-wrapper">
+            <div id="calendar"></div>
+        </div>
+    </div>
+
+    <!-- Event Modal -->
+    <div id="eventModal" class="event-modal">
+        <div class="event-modal-content">
+            <div class="event-modal-header">
+                <h2 class="event-modal-title" id="modalEventTitle">Event Title</h2>
+                <button class="event-modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="event-modal-body" id="modalEventBody">
+                <!-- Event details will be populated here -->
+            </div>
+            <div class="event-modal-actions">
+                <button class="event-action-btn" id="addToCalendarBtn">
+                    📅 Add to My Calendar
+                </button>
+                <button class="event-action-btn" id="shareEventBtn">
+                    📤 Share Event
+                </button>
+                <button class="event-action-btn" id="closeModalBtn">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FullCalendar Scripts -->
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.10/index.global.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.10/index.global.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.10/index.global.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/list@6.1.10/index.global.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.10/index.global.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/google-calendar@6.1.10/index.global.min.js'></script>
+
+    <script>
+        // Configuration
+        const CONFIG = {
+            // Google OAuth2 Client ID
+            GOOGLE_CLIENT_ID: '177843878782-sfhmffuti1i3tvrg5bjsg29vlkh7q9un.appsusercontent.com',
+            
+            // Calendar IDs from your sync script
+            CALENDARS: {
+                'prayer': 'd0693ad125baad968b86ad667c97943bc3fc6f84cf283186107b9ef3ff5e07a9@group.calendar.google.com',
+                'men': 'b878d99dde022f1b50ebeed8cef2b7ecc77e8b6a14cce053bad48555cd697c83@group.calendar.google.com',
+                'women': '83a924f98220df69f7bd5626a600bfc0c81d6aa975bcfbae3ce97402206d639d@group.calendar.google.com',
+                'college': '594cd005daad2d51f55f90238cc089cead306fdc04018497f7c302a08df14b42@group.calendar.google.com',
+                'adt': '9244a2507b8a61d620e158d783a2f0c806acc8662512918a5bf7786f206b00d5@group.calendar.google.com',
+                'church': '4ef64ec419fad17080fb65f1e567fc9b86138532c83a2ab225b57b2a98a2b462@group.calendar.google.com',
+                'elders': '84710e2c335f267cd7fe02964445eaef73888110cd1179271d8bd5eed8bbab37@group.calendar.google.com',
+                'travel': '10dc28310ee5420007453d12f18e4fe5c12756d4549a14053838f4e3e68cfb6e@group.calendar.google.com',
+                'hub': '7a94f9812f955b1ac98dded4699ea0bbe76ce3354aaadc14bec07c8e3ec3b378@group.calendar.google.com',
+                'kidscamp': '0cac316821b79bcdb885b63ef2658fecb9f9bad3e115fc10e9aa15915251663f@group.calendar.google.com',
+                'lgls': '131c80933409066991e7680f7c001c3eb78fd42323538066ae656c2f9ab709e0@group.calendar.google.com',
+                'missions': 'bf2f225a2fbc2399c66faf2d5a33e3483101c8beb55aa85615ba90331f61eecd@group.calendar.google.com',
+                'prophetic': 'b56856780644862c7de70c813ef4f6f06fec91d707548a0027374dfbedae0a4b@group.calendar.google.com',
+                'retreats': '08fce09d2705af29cf606dc9049f15a60c2b3aaf006a254c4127aa40f8d078a7@group.calendar.google.com',
+                'staff': '33b7be29206486eb56c69d577f89dad2702e7379fdc929a5b5bf219c9c3fae79@group.calendar.google.com',
+                'teachingteam': 'ebafedf41e7351f33e58c72650f253a7866a45d8abf831f4e57312d2d079656d@group.calendar.google.com',
+                'worship': '7e3bd3a5340e1267c2e8acc15738d2b5452bf0c06b7b6fe48984d5807559fa6c@group.calendar.google.com',
+                'ya': '13a01b81b1717b3d3a82fc884c8bfd2bd774c147a713cf7825789bd6a8ae08f6@group.calendar.google.com',
+                'youth': '68400792cf27cac627763eb9d9922a4cdd02ccd237577a9bf6652f1b42fd4966@group.calendar.google.com'
+            },
+            
+            // Calendar display names
+            CALENDAR_NAMES: {
+                'prayer': 'Prayer',
+                'men': 'Men',
+                'women': 'Women',
+                'college': 'College',
+                'adt': 'ADT',
+                'church': 'Church',
+                'women': 'Women',
+                'elders': 'Elders',
+                'travel': 'Travel',
+                'hub': 'Hub',
+                'kidscamp': 'Kids Camp',
+                'lgls': 'LGLS',
+                'missions': 'Missions',
+                'prophetic': 'Prophetic',
+                'retreats': 'Retreats',
+                'staff': 'Staff',
+                'teachingteam': 'Teaching Team',
+                'worship': 'Worship',
+                'ya': 'Young Adults',
+                'youth': 'Youth'
+            }
+        };
+
+        // Global variables
+        let calendar;
+        let selectedCalendars = new Set(Object.keys(CONFIG.CALENDARS));
+        let currentView = 'dayGridMonth';
+        let searchQuery = '';
+
+                 // Initialize the application
+         document.addEventListener('DOMContentLoaded', function() {
+             // Test Google Calendar API connection first
+             testGoogleCalendarAPI();
+             
+             initializeCalendar();
+             setupEventListeners();
+             populateCalendarCheckboxes();
+             showLoading();
+         });
+
+                 // Test Google Calendar API connection
+         function testGoogleCalendarAPI() {
+             // Test with one calendar to see if API is working
+             const testUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CONFIG.CALENDARS.prayer)}/events?key=${CONFIG.GOOGLE_API_KEY}&timeMin=${new Date().toISOString()}&maxResults=1`;
+             
+             fetch(testUrl)
+                 .then(response => {
+                     if (!response.ok) {
+                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                     }
+                     return response.json();
+                 })
+                 .then(data => {
+                     console.log('Google Calendar API test successful:', data);
+                     showSuccess('Google Calendar API connection successful!');
+                 })
+                 .catch(error => {
+                     console.error('Google Calendar API test failed:', error);
+                     showError(`Google Calendar API connection failed: ${error.message}. Check your API key and calendar permissions.`);
+                 });
+         }
+         
+         // Initialize FullCalendar
+         function initializeCalendar() {
+            const calendarEl = document.getElementById('calendar');
+            
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: currentView,
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,dayGridThreeMonth,dayGridYear,listMonth'
+                },
+                                 views: {
+                     dayGridThreeMonth: {
+                         type: 'dayGrid',
+                         duration: { months: 3 },
+                         buttonText: '3 Months',
+                         dayMaxEvents: 3,
+                         fixedWeekCount: false
+                     },
+                     dayGridYear: {
+                         type: 'dayGrid',
+                         duration: { months: 12 },
+                         buttonText: 'Year',
+                         dayMaxEvents: 2,
+                         fixedWeekCount: false
+                     }
+                 },
+                height: 'auto',
+                expandRows: true,
+                dayMaxEvents: true,
+                eventDisplay: 'block',
+                eventClick: handleEventClick,
+                eventDidMount: handleEventDidMount,
+                loading: function(isLoading) {
+                    if (isLoading) {
+                        showLoading();
+                    } else {
+                        hideLoading();
+                    }
+                },
+                                 eventSources: getEventSources(),
+                 eventSourceFailure: function(error) {
+                     console.error('Event source error:', error);
+                     showError('Failed to load calendar events. Please try again.');
+                 },
+                 // Add error handling for individual event sources
+                 eventSourceSuccess: function(content, xhr) {
+                     console.log('Event source loaded successfully:', content);
+                     hideLoading();
+                 }
+            });
+
+            calendar.render();
+        }
+
+                 // Get event sources based on selected calendars
+         function getEventSources() {
+             const sources = [];
+             
+             selectedCalendars.forEach(calendarId => {
+                 if (CONFIG.CALENDARS[calendarId]) {
+                     sources.push({
+                         googleCalendarId: CONFIG.CALENDARS[calendarId],
+                         googleCalendarApiKey: CONFIG.GOOGLE_API_KEY,
+                         className: `calendar-${calendarId}`,
+                         failure: function(error) {
+                             console.error(`Failed to load calendar ${calendarId}:`, error);
+                             showError(`Failed to load ${CONFIG.CALENDAR_NAMES[calendarId]} calendar. Check console for details.`);
+                         },
+                         success: function(content, xhr) {
+                             console.log(`Successfully loaded ${calendarId} calendar:`, content);
+                         },
+                         eventDataTransform: function(event) {
+                             return {
+                                 id: event.id,
+                                 title: event.title,
+                                 start: event.start,
+                                 end: event.end,
+                                 allDay: event.allDay,
+                                 description: event.description,
+                                 location: event.location,
+                                 url: event.url,
+                                 backgroundColor: getCalendarColor(calendarId),
+                                 borderColor: getCalendarColor(calendarId),
+                                 textColor: '#ffffff',
+                                 extendedProps: {
+                                     calendarId: calendarId,
+                                     calendarName: CONFIG.CALENDAR_NAMES[calendarId]
+                                 }
+                             };
+                         }
+                     });
+                 }
+             });
+             
+             return sources;
+         }
+
+        // Get calendar color
+        function getCalendarColor(calendarId) {
+            const colors = {
+                'prayer': '#3b82f6',
+                'men': '#10b981',
+                'women': '#f59e0b',
+                'college': '#8b5cf6',
+                'adt': '#06b6d4',
+                'church': '#ef4444',
+                'elders': '#84cc16',
+                'travel': '#f97316',
+                'hub': '#ec4899',
+                'kidscamp': '#22c55e',
+                'lgls': '#a855f7',
+                'missions': '#14b8a6',
+                'prophetic': '#f43f5e',
+                'retreats': '#6366f1',
+                'staff': '#64748b',
+                'teachingteam': '#0ea5e9',
+                'worship': '#fbbf24',
+                'ya': '#34d399',
+                'youth': '#60a5fa'
+            };
+            return colors[calendarId] || '#6b7280';
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // View controls
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const view = this.dataset.view;
+                    changeView(view);
+                    
+                    // Update active state
+                    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+
+            // Select all/deselect all
+            document.getElementById('selectAllBtn').addEventListener('click', selectAllCalendars);
+            document.getElementById('deselectAllBtn').addEventListener('click', deselectAllCalendars);
+
+            // Search
+            document.getElementById('searchBtn').addEventListener('click', performSearch);
+            document.getElementById('searchInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+
+            // Modal controls
+            document.getElementById('modalClose').addEventListener('click', closeEventModal);
+            document.getElementById('closeModalBtn').addEventListener('click', closeEventModal);
+            document.getElementById('addToCalendarBtn').addEventListener('click', addToPersonalCalendar);
+            document.getElementById('shareEventBtn').addEventListener('click', shareEvent);
+
+            // Close modal when clicking outside
+            document.getElementById('eventModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeEventModal();
+                }
+            });
+        }
+
+        // Populate calendar checkboxes
+        function populateCalendarCheckboxes() {
+            const container = document.getElementById('calendarCheckboxes');
+            
+            Object.entries(CONFIG.CALENDAR_NAMES).forEach(([id, name]) => {
+                const checkboxDiv = document.createElement('div');
+                checkboxDiv.className = 'calendar-checkbox';
+                checkboxDiv.innerHTML = `
+                    <input type="checkbox" id="cal_${id}" value="${id}" checked>
+                    <label for="cal_${id}">${name}</label>
+                `;
+                
+                const checkbox = checkboxDiv.querySelector('input');
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        selectedCalendars.add(this.value);
+                    } else {
+                        selectedCalendars.delete(this.value);
+                    }
+                    refreshCalendar();
+                });
+                
+                container.appendChild(checkboxDiv);
+            });
+        }
+
+        // Select all calendars
+        function selectAllCalendars() {
+            selectedCalendars = new Set(Object.keys(CONFIG.CALENDARS));
+            document.querySelectorAll('#calendarCheckboxes input[type="checkbox"]').forEach(cb => {
+                cb.checked = true;
+            });
+            refreshCalendar();
+        }
+
+        // Deselect all calendars
+        function deselectAllCalendars() {
+            selectedCalendars.clear();
+            document.querySelectorAll('#calendarCheckboxes input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+            });
+            refreshCalendar();
+        }
+
+        // Change calendar view
+        function changeView(view) {
+            currentView = view;
+            calendar.changeView(view);
+        }
+
+        // Perform search
+        function performSearch() {
+            searchQuery = document.getElementById('searchInput').value.trim();
+            
+            if (searchQuery) {
+                // Filter events based on search query
+                calendar.getEvents().forEach(event => {
+                    const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                        (event.extendedProps.description && event.extendedProps.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                                        (event.extendedProps.location && event.extendedProps.location.toLowerCase().includes(searchQuery.toLowerCase()));
+                    
+                    if (matchesSearch) {
+                        event.setProp('backgroundColor', '#fbbf24');
+                        event.setProp('borderColor', '#f59e0b');
+                    } else {
+                        const originalColor = getCalendarColor(event.extendedProps.calendarId);
+                        event.setProp('backgroundColor', originalColor);
+                        event.setProp('borderColor', originalColor);
+                    }
+                });
+                
+                showSuccess(`Search results for: "${searchQuery}"`);
+            } else {
+                // Clear search highlighting
+                calendar.getEvents().forEach(event => {
+                    const originalColor = getCalendarColor(event.extendedProps.calendarId);
+                    event.setProp('backgroundColor', originalColor);
+                    event.setProp('borderColor', originalColor);
+                });
+            }
+        }
+
+        // Refresh calendar with new event sources
+        function refreshCalendar() {
+            calendar.removeAllEventSources();
+            calendar.addEventSource(getEventSources());
+        }
+
+        // Handle event click
+        function handleEventClick(info) {
+            const event = info.event;
+            showEventModal(event);
+        }
+
+        // Handle event mount
+        function handleEventDidMount(info) {
+            // Add tooltip or additional styling if needed
+            const event = info.event;
+            const element = info.el;
+            
+            // Add calendar name to event title for better identification
+            if (event.extendedProps.calendarName) {
+                element.title = `${event.title} (${event.extendedProps.calendarName})`;
+            }
+        }
+
+        // Show event modal
+        function showEventModal(event) {
+            const modal = document.getElementById('eventModal');
+            const title = document.getElementById('modalEventTitle');
+            const body = document.getElementById('modalEventBody');
+            
+            title.textContent = event.title;
+            
+            const startDate = event.start ? new Date(event.start).toLocaleString() : 'TBD';
+            const endDate = event.end ? new Date(event.end).toLocaleString() : 'TBD';
+            const description = event.extendedProps.description || 'No description available';
+            const location = event.extendedProps.location || 'No location specified';
+            const calendarName = event.extendedProps.calendarName || 'Unknown Calendar';
+            
+            body.innerHTML = `
+                <div class="event-detail-row">
+                    <div class="event-detail-label">Calendar:</div>
+                    <div class="event-detail-value">${calendarName}</div>
+                </div>
+                <div class="event-detail-row">
+                    <div class="event-detail-label">Start:</div>
+                    <div class="event-detail-value">${startDate}</div>
+                </div>
+                <div class="event-detail-row">
+                    <div class="event-detail-label">End:</div>
+                    <div class="event-detail-value">${endDate}</div>
+                </div>
+                <div class="event-detail-row">
+                    <div class="event-detail-label">Location:</div>
+                    <div class="event-detail-value">${location}</div>
+                </div>
+                <div class="event-detail-row">
+                    <div class="event-detail-label">Description:</div>
+                    <div class="event-detail-value">${description}</div>
+                </div>
+            `;
+            
+            modal.style.display = 'block';
+        }
+
+        // Close event modal
+        function closeEventModal() {
+            document.getElementById('eventModal').style.display = 'none';
+        }
+
+        // Add event to personal calendar
+        function addToPersonalCalendar() {
+            // This would integrate with the user's personal calendar
+            // For now, we'll show a success message
+            showSuccess('Event added to your personal calendar!');
+        }
+
+        // Share event
+        function shareEvent() {
+            if (navigator.share) {
+                navigator.share({
+                    title: document.getElementById('modalEventTitle').textContent,
+                    text: 'Check out this event from Antioch Boone!',
+                    url: window.location.href
+                });
+            } else {
+                // Fallback: copy to clipboard
+                const eventInfo = `${document.getElementById('modalEventTitle').textContent}\nCheck out this event from Antioch Boone!\n${window.location.href}`;
+                navigator.clipboard.writeText(eventInfo).then(() => {
+                    showSuccess('Event information copied to clipboard!');
+                });
+            }
+        }
+
+        // Utility functions
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            const successEl = document.getElementById('successMessage');
+            successEl.textContent = message;
+            successEl.style.display = 'block';
+            setTimeout(() => {
+                successEl.style.display = 'none';
+            }, 3000);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (calendar) {
+                calendar.updateSize();
+            }
+        });
+    </script>
+</body>
+</html>

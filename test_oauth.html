@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth2 Test - Antioch Calendar</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #userInfo {
+            display: none;
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        #authStatus {
+            display: none;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>OAuth2 Authentication Test</h1>
+    
+    <div class="test-section">
+        <h2>Google One Tap Authentication</h2>
+        <p>This test verifies that Google One Tap authentication is working correctly.</p>
+        
+        <div id="signInButton">
+            <div id="g_id_onload" 
+                 data-client_id="177843878782-sfhmffuti1i3tvrg5bjsg29vlkh7q9un.apps.googleusercontent.com" 
+                 data-context="signin" 
+                 data-ux_mode="popup" 
+                 data-callback="handleCredentialResponse" 
+                 data-auto_prompt="false" 
+                 data-itp_support="true">
+            </div>
+            <div class="g_id_signin" 
+                 data-type="standard" 
+                 data-shape="rectangular" 
+                 data-theme="outline" 
+                 data-text="signin_with" 
+                 data-size="large" 
+                 data-logo_alignment="left" 
+                 data-width="300">
+            </div>
+        </div>
+        
+        <div id="userInfo">
+            <h3>User Information</h3>
+            <p><strong>Name:</strong> <span id="userName"></span></p>
+            <p><strong>Email:</strong> <span id="userEmail"></span></p>
+            <p><strong>Picture:</strong> <img id="userPicture" width="50" height="50" style="border-radius: 50%;"></p>
+            <button onclick="signOut()">Sign Out</button>
+        </div>
+        
+        <div id="authStatus">
+            <h3>Authentication Status</h3>
+            <p id="authStatusText"></p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="testResults"></div>
+    </div>
+
+    <!-- Load Google One Tap Library -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <script>
+        let userProfile = null;
+        let accessToken = null;
+        
+        // Test configuration
+        const CONFIG = {
+            GOOGLE_CLIENT_ID: '177843878782-sfhmffuti1i3tvrg5bjsg29vlkh7q9un.apps.googleusercontent.com'
+        };
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            logTest('Page loaded, initializing OAuth2...', 'info');
+            
+            // Check for existing authentication
+            const savedToken = localStorage.getItem('google_access_token');
+            const savedProfile = localStorage.getItem('google_user_profile');
+            
+            if (savedToken && savedProfile) {
+                try {
+                    accessToken = savedToken;
+                    userProfile = JSON.parse(savedProfile);
+                    showUserInfo();
+                    hideSignInButton();
+                    logTest('Restored previous authentication', 'success');
+                } catch (error) {
+                    logTest('Error restoring authentication: ' + error.message, 'error');
+                    localStorage.removeItem('google_access_token');
+                    localStorage.removeItem('google_user_profile');
+                }
+            }
+            
+            // Wait for Google One Tap to load
+            if (typeof google !== 'undefined' && google.accounts) {
+                initializeGoogleOneTap();
+            } else {
+                window.addEventListener('load', function() {
+                    if (typeof google !== 'undefined' && google.accounts) {
+                        initializeGoogleOneTap();
+                    }
+                });
+            }
+        });
+        
+        // Initialize Google One Tap
+        function initializeGoogleOneTap() {
+            logTest('Initializing Google One Tap...', 'info');
+            
+            google.accounts.id.initialize({
+                client_id: CONFIG.GOOGLE_CLIENT_ID,
+                callback: handleCredentialResponse,
+                auto_select: true,
+                cancel_on_tap_outside: false,
+                prompt_parent_id: 'signInButton',
+                state_cookie_domain: window.location.hostname,
+                ux_mode: 'popup',
+                context: 'signin'
+            });
+            
+            logTest('Google One Tap initialized successfully', 'success');
+            
+            // Try silent authentication
+            google.accounts.id.prompt((notification) => {
+                if (notification.isNotDisplayed()) {
+                    logTest('Silent authentication not displayed: ' + notification.getNotDisplayedReason(), 'info');
+                } else if (notification.isSkippedMoment()) {
+                    logTest('Silent authentication skipped: ' + notification.getSkippedReason(), 'info');
+                } else if (notification.isDismissedMoment()) {
+                    logTest('Silent authentication dismissed: ' + notification.getDismissedReason(), 'info');
+                }
+            });
+        }
+        
+        // Handle OAuth2 credential response
+        function handleCredentialResponse(response) {
+            logTest('Received credential response', 'success');
+            
+            const credential = response.credential;
+            
+            try {
+                // Decode the JWT token to get user info
+                const payload = JSON.parse(atob(credential.split('.')[1]));
+                
+                userProfile = {
+                    name: payload.name,
+                    email: payload.email,
+                    picture: payload.picture,
+                    sub: payload.sub
+                };
+                
+                // Store user profile
+                localStorage.setItem('google_user_profile', JSON.stringify(userProfile));
+                
+                // Store the credential as access token (for this test)
+                accessToken = credential;
+                localStorage.setItem('google_access_token', accessToken);
+                
+                logTest('User authenticated: ' + userProfile.name, 'success');
+                logTest('Email: ' + userProfile.email, 'info');
+                logTest('User ID: ' + userProfile.sub, 'info');
+                
+                showUserInfo();
+                hideSignInButton();
+                
+            } catch (error) {
+                logTest('Error processing credential: ' + error.message, 'error');
+            }
+        }
+        
+        // Show user information
+        function showUserInfo() {
+            if (userProfile) {
+                document.getElementById('userName').textContent = userProfile.name;
+                document.getElementById('userEmail').textContent = userProfile.email;
+                document.getElementById('userPicture').src = userProfile.picture;
+                document.getElementById('userInfo').style.display = 'block';
+            }
+        }
+        
+        // Hide sign-in button
+        function hideSignInButton() {
+            document.getElementById('signInButton').style.display = 'none';
+        }
+        
+        // Show sign-in button
+        function showSignInButton() {
+            document.getElementById('signInButton').style.display = 'block';
+            document.getElementById('userInfo').style.display = 'none';
+        }
+        
+        // Sign out user
+        function signOut() {
+            userProfile = null;
+            accessToken = null;
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_user_profile');
+            
+            showSignInButton();
+            logTest('User signed out', 'info');
+        }
+        
+        // Log test results
+        function logTest(message, type = 'info') {
+            const results = document.getElementById('testResults');
+            const timestamp = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = type;
+            div.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            results.appendChild(div);
+            
+            // Also log to console
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        // Test OAuth2 functionality
+        function testOAuth2() {
+            logTest('Testing OAuth2 functionality...', 'info');
+            
+            if (typeof google === 'undefined') {
+                logTest('Google One Tap library not loaded', 'error');
+                return;
+            }
+            
+            if (typeof google.accounts === 'undefined') {
+                logTest('Google accounts not available', 'error');
+                return;
+            }
+            
+            logTest('Google One Tap library loaded successfully', 'success');
+            logTest('Google accounts available', 'success');
+            
+            if (userProfile) {
+                logTest('User is authenticated', 'success');
+                logTest('Testing token validation...', 'info');
+                
+                // Test the stored token
+                if (accessToken) {
+                    logTest('Access token available', 'success');
+                    logTest('Token length: ' + accessToken.length + ' characters', 'info');
+                } else {
+                    logTest('No access token available', 'error');
+                }
+            } else {
+                logTest('User not authenticated', 'info');
+            }
+        }
+        
+        // Run tests after a delay
+        setTimeout(testOAuth2, 2000);
+    </script>
+</body>
+</html>

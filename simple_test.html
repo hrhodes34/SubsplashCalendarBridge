@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Key Calendar Test - Debug</title>
+    <style>
+        .calendar-embed {
+            margin: 20px 0;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .calendar-iframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+            border-radius: 4px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>API Key Google Calendar Test - Debug Mode</h1>
+    <p>Testing your new API key: <code>AIzaSyAx7KeLEAVPDR7C_-7JqhBLmvxouB67bkY</code></p>
+    
+    <div class="test-section">
+        <h3>🧪 Test 1: API Access Tests</h3>
+        <button onclick="testBasicAPI()">Test Basic API Access</button>
+        <button onclick="testCalendarList()">Test Calendar List</button>
+        <button onclick="testPrimaryCalendar()">Test Primary Calendar</button>
+        <button onclick="testSpecificCalendar()">Test Specific Calendar</button>
+        <button onclick="testADTCalendar()">Test ADT Calendar</button>
+        <button onclick="clearResults()">Clear Results</button>
+        <div id="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>📅 Test 2: Calendar Embed Test</h3>
+        <p>Testing the Google Calendar embed iframe approach:</p>
+        <button onclick="showADTEmbed()">Show ADT Calendar Embed</button>
+        <button onclick="showPrayerEmbed()">Show Prayer Calendar Embed</button>
+        <button onclick="hideEmbeds()">Hide All Embeds</button>
+        <div id="embed-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>📋 Test 3: iCal Feed Test</h3>
+        <p>Testing Google Calendar iCal feeds (this is what we'll use with FullCalendar):</p>
+        <button onclick="testADTiCal()">Test ADT iCal Feed</button>
+        <button onclick="testPrayeriCal()">Test Prayer iCal Feed</button>
+        <button onclick="testMultipleiCal()">Test Multiple iCal Feeds</button>
+        <button onclick="testGoogleCloudConfig()">Test Google Cloud Config</button>
+        <button onclick="testSubsplashBlocking()">Test Subsplash Blocking</button>
+        <button onclick="cleariCalResults()">Clear iCal Results</button>
+        <div id="ical-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>🔍 Test 4: Subsplash Code Manipulation Test</h3>
+        <p>Testing what HTML elements and code Subsplash might strip out:</p>
+        <button onclick="generateTestCode()">Generate Test Code</button>
+        <button onclick="testMultipleCalendarEmbed()">Test Multiple Calendar Embed</button>
+        <button onclick="clearCodeTestResults()">Clear Code Test Results</button>
+        <div id="code-test-results"></div>
+    </div>
+
+    <script>
+        const API_KEY = 'AIzaSyAx7KeLEAVPDR7C_-7JqhBLmvxouB67bkY';
+        const ADT_CALENDAR_ID = '9244a2507b8a61d620e158d783a2f0c806acc8662512918a5bf7786f206b00d5@group.calendar.google.com';
+        const PRAYER_CALENDAR_ID = 'd0693ad125baad968b86ad667c97943bc3fc6f84cf283186107b9ef3ff5e07a9@group.calendar.google.com';
+        
+        function clearResults() {
+            document.getElementById('result').innerHTML = '';
+        }
+        
+        function log(message, type = 'info') {
+            const result = document.getElementById('result');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'success' ? 'green' : type === 'error' ? 'red' : 'blue';
+            
+            result.innerHTML += `<div style="color: ${color}; margin: 5px 0;"><strong>[${timestamp}]</strong> ${message}</div>`;
+        }
+        
+        function showADTEmbed() {
+            const embedResults = document.getElementById('embed-results');
+            embedResults.innerHTML = `
+                <div class="calendar-embed">
+                    <h4>ADT Calendar Embed Test</h4>
+                    <p>Calendar ID: ${ADT_CALENDAR_ID}</p>
+                    <iframe 
+                        src="https://calendar.google.com/calendar/embed?src=${encodeURIComponent(ADT_CALENDAR_ID)}&ctz=America%2FNew_York&mode=AGENDA&showTitle=1&showNav=1&showDate=1&showPrint=1&showTabs=1&showCalendars=1&showTz=1" 
+                        class="calendar-iframe"
+                        title="ADT Calendar">
+                    </iframe>
+                </div>
+            `;
+        }
+        
+        function showPrayerEmbed() {
+            const embedResults = document.getElementById('embed-results');
+            embedResults.innerHTML = `
+                <div class="calendar-embed">
+                    <h4>Prayer Calendar Embed Test</h4>
+                    <p>Calendar ID: ${PRAYER_CALENDAR_ID}</p>
+                    <iframe 
+                        src="https://calendar.google.com/calendar/embed?src=${encodeURIComponent(PRAYER_CALENDAR_ID)}&ctz=America%2FNew_York&mode=AGENDA&showTitle=1&showNav=1&showDate=1&showPrint=1&showTabs=1&showCalendars=1&showTz=1" 
+                        class="calendar-iframe"
+                        title="Prayer Calendar">
+                    </iframe>
+                </div>
+            `;
+        }
+        
+        function hideEmbeds() {
+            document.getElementById('embed-results').innerHTML = '';
+        }
+        
+        function cleariCalResults() {
+            document.getElementById('ical-results').innerHTML = '';
+        }
+        
+        function logiCal(message, type = 'info') {
+            const result = document.getElementById('ical-results');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'success' ? 'green' : type === 'error' ? 'red' : 'blue';
+            
+            result.innerHTML += `<div style="color: ${color}; margin: 5px 0;"><strong>[${timestamp}]</strong> ${message}</div>`;
+        }
+        
+        function testBasicAPI() {
+            log('Testing basic Calendar API access...', 'info');
+            
+            // Test the Calendar API discovery endpoint
+            const testUrl = `https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest?key=${API_KEY}`;
+            
+            fetch(testUrl)
+                .then(response => {
+                    log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    log('✅ Basic API access successful!', 'success');
+                    log(`API name: ${data.name}`, 'info');
+                    log(`API version: ${data.version}`, 'info');
+                    log(`API title: ${data.title}`, 'info');
+                })
+                .catch(error => {
+                    log(`❌ Basic API test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testCalendarList() {
+            log('Testing calendar list endpoint...', 'info');
+            
+            // Test getting list of calendars
+            const testUrl = `https://www.googleapis.com/calendar/v3/users/me/calendarList?key=${API_KEY}`;
+            
+            fetch(testUrl)
+                .then(response => {
+                    log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    log('✅ Calendar list access successful!', 'success');
+                    log(`Calendars found: ${data.items ? data.items.length : 0}`, 'info');
+                    
+                    if (data.items && data.items.length > 0) {
+                        log('Available calendars:', 'info');
+                        data.items.forEach((cal, index) => {
+                            log(`  ${index + 1}. ${cal.summary} (${cal.id})`, 'info');
+                        });
+                    }
+                })
+                .catch(error => {
+                    log(`❌ Calendar list test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testPrimaryCalendar() {
+            log('Testing primary calendar endpoint...', 'info');
+            
+            // Test with primary calendar
+            const testUrl = `https://www.googleapis.com/calendar/v3/calendars/primary?key=${API_KEY}`;
+            
+            fetch(testUrl)
+                .then(response => {
+                    log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    log('✅ Primary calendar access successful!', 'success');
+                    log(`Calendar ID: ${data.id}`, 'info');
+                    log(`Summary: ${data.summary || 'No summary'}`, 'info');
+                    log(`Access Role: ${data.accessRole || 'Unknown'}`, 'info');
+                })
+                .catch(error => {
+                    log(`❌ Primary calendar test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testSpecificCalendar() {
+            log('Testing specific calendar with events...', 'info');
+            
+            // Test with a specific calendar ID and events
+            const testUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events?key=${API_KEY}&timeMin=${new Date().toISOString()}&maxResults=1`;
+            
+            fetch(testUrl)
+                .then(response => {
+                    log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    log('✅ Specific calendar events access successful!', 'success');
+                    log(`Events found: ${data.items ? data.items.length : 0}`, 'info');
+                    
+                    if (data.items && data.items.length > 0) {
+                        log('Sample event:', 'info');
+                        const event = data.items[0];
+                        log(`  Title: ${event.summary || 'No title'}`, 'info');
+                        log(`  Start: ${event.start?.dateTime || event.start?.date || 'No date'}`, 'info');
+                    }
+                })
+                .catch(error => {
+                    log(`❌ Specific calendar test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testADTCalendar() {
+            log('Testing ADT calendar specifically...', 'info');
+            log(`Calendar ID: ${ADT_CALENDAR_ID}`, 'info');
+            
+            // Test 1: Get calendar details
+            const calendarUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ADT_CALENDAR_ID)}?key=${API_KEY}`;
+            
+            fetch(calendarUrl)
+                .then(response => {
+                    log(`Calendar details response: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    log('✅ ADT Calendar details access successful!', 'success');
+                    log(`Calendar ID: ${data.id}`, 'info');
+                    log(`Summary: ${data.summary || 'No summary'}`, 'info');
+                    log(`Description: ${data.description || 'No description'}`, 'info');
+                    log(`Access Role: ${data.accessRole || 'Unknown'}`, 'info');
+                    
+                    // Now test getting events from this calendar
+                    return testADTEvents();
+                })
+                .catch(error => {
+                    log(`❌ ADT Calendar details failed: ${error.message}`, 'error');
+                    log('Trying alternative approach...', 'info');
+                    return testPublicCalendarAccess();
+                });
+        }
+        
+        function testADTEvents() {
+            log('Testing ADT calendar events...', 'info');
+            
+            // Test getting events from ADT calendar
+            const eventsUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ADT_CALENDAR_ID)}/events?key=${API_KEY}&timeMin=${new Date().toISOString()}&maxResults=3`;
+            
+            fetch(eventsUrl)
+                .then(response => {
+                    log(`Events response: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    log('✅ ADT Calendar events access successful!', 'success');
+                    log(`Events found: ${data.items ? data.items.length : 0}`, 'info');
+                    
+                    if (data.items && data.items.length > 0) {
+                        log('Sample events:', 'info');
+                        data.items.forEach((event, index) => {
+                            log(`  Title: ${event.summary || 'No title'}`, 'info');
+                            log(`  Start: ${event.start?.dateTime || event.start?.date || 'No date'}`, 'info');
+                        });
+                    } else {
+                        log('No upcoming events found in ADT calendar', 'info');
+                    }
+                })
+                .catch(error => {
+                    log(`❌ ADT Calendar events failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testPublicCalendarAccess() {
+            log('Testing public calendar access...', 'info');
+            
+            // Try accessing the public calendar URL
+            const publicUrl = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(ADT_CALENDAR_ID)}`;
+            
+            log(`Public URL: ${publicUrl}`, 'info');
+            
+            // Test if we can access the calendar via the public embed URL
+            fetch(publicUrl)
+                .then(response => {
+                    log(`Public URL response: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (response.ok) {
+                        log('✅ Public calendar URL accessible!', 'success');
+                        log('This suggests the calendar is public but API access requires different permissions', 'info');
+                    } else {
+                        log(`❌ Public URL failed: ${response.status}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    log(`❌ Public URL test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testADTiCal() {
+            logiCal('Testing ADT iCal feed...', 'info');
+            
+            const icalUrl = `https://calendar.google.com/calendar/ical/${encodeURIComponent(ADT_CALENDAR_ID)}/public/basic.ics`;
+            logiCal(`iCal URL: ${icalUrl}`, 'info');
+            
+            fetch(icalUrl)
+                .then(response => {
+                    logiCal(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    logiCal('✅ ADT iCal feed accessible!', 'success');
+                    logiCal(`Data length: ${data.length} characters`, 'info');
+                    
+                    // Parse some basic iCal data
+                    const lines = data.split('\n');
+                    const events = [];
+                    let currentEvent = {};
+                    
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i];
+                        if (line.startsWith('BEGIN:VEVENT')) {
+                            currentEvent = {};
+                        } else if (line.startsWith('END:VEVENT')) {
+                            if (currentEvent.summary) {
+                                events.push(currentEvent);
+                            }
+                        } else if (line.startsWith('SUMMARY:')) {
+                            currentEvent.summary = line.substring(8);
+                        } else if (line.startsWith('DTSTART:')) {
+                            currentEvent.start = line.substring(8);
+                        } else if (line.startsWith('DTEND:')) {
+                            currentEvent.end = line.substring(6);
+                        }
+                    }
+                    
+                    logiCal(`Events found: ${events.length}`, 'info');
+                    if (events.length > 0) {
+                        logiCal('Sample events:', 'info');
+                        events.slice(0, 3).forEach((event, index) => {
+                            logiCal(`  ${index + 1}. ${event.summary} - Start: ${event.start}`, 'info');
+                        });
+                    }
+                })
+                .catch(error => {
+                    logiCal(`❌ ADT iCal test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testPrayeriCal() {
+            logiCal('Testing Prayer iCal feed...', 'info');
+            
+            const icalUrl = `https://calendar.google.com/calendar/ical/${encodeURIComponent(PRAYER_CALENDAR_ID)}/public/basic.ics`;
+            logiCal(`iCal URL: ${icalUrl}`, 'info');
+            
+            fetch(icalUrl)
+                .then(response => {
+                    logiCal(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    logiCal('✅ Prayer iCal feed accessible!', 'success');
+                    logiCal(`Data length: ${data.length} characters`, 'info');
+                    
+                    // Parse some basic iCal data
+                    const lines = data.split('\n');
+                    const events = [];
+                    let currentEvent = {};
+                    
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i];
+                        if (line.startsWith('BEGIN:VEVENT')) {
+                            currentEvent = {};
+                        } else if (line.startsWith('END:VEVENT')) {
+                            if (currentEvent.summary) {
+                                events.push(currentEvent);
+                            }
+                        } else if (line.startsWith('SUMMARY:')) {
+                            currentEvent.summary = line.substring(8);
+                        } else if (line.startsWith('DTSTART:')) {
+                            currentEvent.start = line.substring(8);
+                        } else if (line.startsWith('DTEND:')) {
+                            currentEvent.end = line.substring(6);
+                        }
+                    }
+                    
+                    logiCal(`Events found: ${events.length}`, 'info');
+                    if (events.length > 0) {
+                        logiCal('Sample events:', 'info');
+                        events.slice(0, 3).forEach((event, index) => {
+                            logiCal(`  ${index + 1}. ${event.summary} - Start: ${event.start}`, 'info');
+                        });
+                    }
+                })
+                .catch(error => {
+                    logiCal(`❌ Prayer iCal test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testMultipleiCal() {
+            logiCal('Testing multiple iCal feeds together...', 'info');
+            
+            const calendars = [
+                { name: 'ADT', id: ADT_CALENDAR_ID },
+                { name: 'Prayer', id: PRAYER_CALENDAR_ID }
+            ];
+            
+            let completed = 0;
+            const results = [];
+            
+            calendars.forEach(calendar => {
+                const icalUrl = `https://calendar.google.com/calendar/ical/${encodeURIComponent(calendar.id)}/public/basic.ics`;
+                
+                fetch(icalUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.text();
+                    })
+                    .then(data => {
+                        // Count events
+                        const eventCount = (data.match(/BEGIN:VEVENT/g) || []).length;
+                        results.push({ name: calendar.name, events: eventCount, success: true });
+                        
+                        completed++;
+                        if (completed === calendars.length) {
+                            showCombinedResults(results);
+                        }
+                    })
+                    .catch(error => {
+                        results.push({ name: calendar.name, error: error.message, success: false });
+                        
+                        completed++;
+                        if (completed === calendars.length) {
+                            showCombinedResults(results);
+                        }
+                    });
+            });
+        }
+        
+        function showCombinedResults(results) {
+            logiCal('=== Combined iCal Results ===', 'info');
+            results.forEach(result => {
+                if (result.success) {
+                    logiCal(`✅ ${result.name}: ${result.events} events`, 'success');
+                } else {
+                    logiCal(`❌ ${result.name}: ${result.error}`, 'error');
+                }
+            });
+            logiCal('This shows how FullCalendar can combine multiple iCal feeds!', 'success');
+        }
+
+        function testGoogleCloudConfig() {
+            log('Testing Google Cloud Project Configuration...', 'info');
+            
+            // This test will check if the API key has the necessary permissions
+            // by attempting to list calendars for the user.
+            const testUrl = `https://www.googleapis.com/calendar/v3/users/me/calendarList?key=${API_KEY}`;
+            
+            fetch(testUrl)
+                .then(response => {
+                    log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (response.ok) {
+                        log('✅ Google Cloud Project Configuration is correct!', 'success');
+                        log('Your API key has sufficient permissions to access calendar data.', 'info');
+                    } else {
+                        log(`❌ Google Cloud Project Configuration failed. API key might not have calendar.list permission.`, 'error');
+                        log(`Response status: ${response.status} ${response.statusText}`, 'error');
+                        log(`Response body: ${response.statusText}`, 'error'); // Sometimes body is empty or not JSON
+                    }
+                })
+                .catch(error => {
+                    log(`❌ Google Cloud Project Configuration test failed: ${error.message}`, 'error');
+                });
+        }
+        
+        function testSubsplashBlocking() {
+            logiCal('Testing for Subsplash blocking...', 'info');
+            
+            // Test 1: Try accessing the calendar from different contexts
+            logiCal('Test 1: Direct calendar access...', 'info');
+            
+            const directUrl = `https://calendar.google.com/calendar/ical/${encodeURIComponent(ADT_CALENDAR_ID)}/public/basic.ics`;
+            
+            fetch(directUrl, { 
+                method: 'GET',
+                mode: 'cors',
+                headers: {
+                    'Accept': 'text/calendar,text/plain,*/*',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            })
+            .then(response => {
+                logiCal(`Direct access response: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                
+                if (response.ok) {
+                    logiCal('✅ Direct access works! Subsplash might be blocking embedded access', 'success');
+                } else {
+                    logiCal(`❌ Direct access failed: ${response.status}`, 'error');
+                }
+                return response.text();
+            })
+            .then(data => {
+                if (data && data.includes('BEGIN:VCALENDAR')) {
+                    logiCal('✅ iCal data received successfully!', 'success');
+                    logiCal(`Data length: ${data.length} characters`, 'info');
+                    
+                    // Count events
+                    const eventCount = (data.match(/BEGIN:VEVENT/g) || []).length;
+                    logiCal(`Events found: ${eventCount}`, 'info');
+                } else {
+                    logiCal('❌ No valid iCal data received', 'error');
+                }
+            })
+            .catch(error => {
+                logiCal(`❌ Direct access error: ${error.message}`, 'error');
+                
+                // Test 2: Try with different user agent
+                logiCal('Test 2: Trying with different approach...', 'info');
+                testAlternativeAccess();
+            });
+        }
+        
+        function testAlternativeAccess() {
+            logiCal('Testing alternative access methods...', 'info');
+            
+            // Try accessing the calendar info page instead of the iCal feed
+            const infoUrl = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(ADT_CALENDAR_ID)}&ctz=America%2FNew_York`;
+            
+            fetch(infoUrl, { 
+                method: 'GET',
+                mode: 'no-cors' // Try no-cors mode
+            })
+            .then(response => {
+                logiCal(`Alternative access response: ${response.status} ${response.statusText}`, 'info');
+                logiCal('If this works, the issue is with iCal feed access specifically', 'info');
+            })
+            .catch(error => {
+                logiCal(`❌ Alternative access failed: ${error.message}`, 'error');
+                logiCal('This strongly suggests Subsplash or domain blocking', 'error');
+            });
+        }
+        
+        function clearCodeTestResults() {
+            document.getElementById('code-test-results').innerHTML = '';
+        }
+        
+        function logCodeTest(message, type = 'info') {
+            const result = document.getElementById('code-test-results');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'success' ? 'green' : type === 'error' ? 'red' : 'blue';
+            
+            result.innerHTML += `<div style="color: ${color}; margin: 5px 0;"><strong>[${timestamp}]</strong> ${message}</div>`;
+        }
+        
+        function generateTestCode() {
+            logCodeTest('Generating test code for Subsplash...', 'info');
+            
+            const testCode = '<!-- SUBSplash CODE MANIPULATION TEST -->\n' +
+                '<!-- This code tests what Subsplash strips out -->\n\n' +
+                '<!-- Test 1: Basic HTML -->\n' +
+                '<h2>Basic HTML Test</h2>\n' +
+                '<p>This is a basic paragraph with <strong>bold text</strong> and <em>italic text</em>.</p>\n\n' +
+                '<!-- Test 2: Inline CSS -->\n' +
+                '<div style="background-color: #f0f0f0; padding: 10px; border: 2px solid #333; border-radius: 5px;">\n' +
+                '    <h3 style="color: #0066cc;">Inline CSS Test</h3>\n' +
+                '    <p style="font-size: 16px; color: #333;">This div has inline CSS styling.</p>\n' +
+                '</div>\n\n' +
+                '<!-- Test 3: Google Calendar Embed (Single) -->\n' +
+                '<h3>Single Calendar Embed Test</h3>\n' +
+                '<iframe \n' +
+                '    src="https://calendar.google.com/calendar/embed?src=' + encodeURIComponent(ADT_CALENDAR_ID) + '&ctz=America%2FNew_York&mode=MONTH&showTitle=1&showNav=1&showDate=1&showPrint=1&showTabs=1&showCalendars=1&showTz=1" \n' +
+                '    style="border: 0" \n' +
+                '    width="800" \n' +
+                '    height="600" \n' +
+                '    frameborder="0" \n' +
+                '    scrolling="no">\n' +
+                '</iframe>\n\n' +
+                '<!-- Test 4: Google Calendar Embed (Multiple) -->\n' +
+                '<h3>Multiple Calendar Embed Test</h3>\n' +
+                '<iframe \n' +
+                '    src="https://calendar.google.com/calendar/embed?src=' + encodeURIComponent(ADT_CALENDAR_ID) + '&src=' + encodeURIComponent(PRAYER_CALENDAR_ID) + '&ctz=America%2FNew_York&mode=MONTH&showTitle=1&showNav=1&showDate=1&showPrint=1&showTabs=1&showCalendars=1&showTz=1" \n' +
+                '    style="border: 0" \n' +
+                '    width="800" \n' +
+                '    height="600" \n' +
+                '    frameborder="0" \n' +
+                '    scrolling="no">\n' +
+                '</iframe>\n\n' +
+                '<!-- Test 5: JavaScript Test (Will likely be stripped) -->\n' +
+                '<script>\n' +
+                '    console.log("JavaScript test - this should be stripped out");\n' +
+                '    alert("JavaScript alert test");\n' +
+                '</script>\n\n' +
+                '<!-- Test 6: External CSS Link (May be stripped) -->\n' +
+                '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">\n\n' +
+                '<!-- Test 7: Custom CSS Class -->\n' +
+                '<div class="custom-calendar-widget">\n' +
+                '    <h4>Custom CSS Class Test</h4>\n' +
+                '    <p>This div has a custom CSS class that may or may not work.</p>\n' +
+                '</div>\n\n' +
+                '<!-- Test 8: Data Attributes -->\n' +
+                '<div data-calendar-id="' + ADT_CALENDAR_ID + '" data-calendar-type="adt">\n' +
+                '    <h4>Data Attributes Test</h4>\n' +
+                '    <p>This div has data attributes for calendar configuration.</p>\n' +
+                '</div>\n\n' +
+                '<!-- Test 9: Form Elements -->\n' +
+                '<form action="#" method="post">\n' +
+                '    <input type="text" name="test" value="Form input test" />\n' +
+                '    <button type="submit">Submit Test</button>\n' +
+                '</form>\n\n' +
+                '<!-- Test 10: Table Structure -->\n' +
+                '<table border="1" style="width: 100%; border-collapse: collapse;">\n' +
+                '    <tr>\n' +
+                '        <th>Calendar</th>\n' +
+                '        <th>Status</th>\n' +
+                '        <th>Events</th>\n' +
+                '    </tr>\n' +
+                '    <tr>\n' +
+                '        <td>ADT</td>\n' +
+                '        <td>Active</td>\n' +
+                '        <td>5 upcoming</td>\n' +
+                '    </tr>\n' +
+                '    <tr>\n' +
+                '        <td>Prayer</td>\n' +
+                '        <td>Active</td>\n' +
+                '        <td>3 upcoming</td>\n' +
+                '    </tr>\n' +
+                '</table>\n\n' +
+                '<!-- END OF SUBSplash CODE MANIPULATION TEST -->';
+            
+            logCodeTest('✅ Test code generated!', 'success');
+            logCodeTest('Copy the code below and paste it into Subsplash:', 'info');
+            
+            const codeDisplay = document.createElement('div');
+            codeDisplay.style.cssText = 'background: #f5f5f5; border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 5px; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow-y: auto;';
+            codeDisplay.textContent = testCode;
+            
+            document.getElementById('code-test-results').appendChild(codeDisplay);
+            
+            logCodeTest('After pasting into Subsplash, tell me what you see and what gets stripped out!', 'info');
+        }
+        
+        function testMultipleCalendarEmbed() {
+            logCodeTest('Testing multiple calendar embed approach...', 'info');
+            
+            // Test the multiple calendar embed URL
+            const multipleCalendarUrl = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(ADT_CALENDAR_ID)}&src=${encodeURIComponent(PRAYER_CALENDAR_ID)}&ctz=America%2FNew_York&mode=MONTH&showTitle=1&showNav=1&showDate=1&showPrint=1&showTabs=1&showCalendars=1&showTz=1`;
+            
+            logCodeTest(`Multiple Calendar URL: ${multipleCalendarUrl}`, 'info');
+            
+            // Create a test iframe to see if it works
+            const testIframe = document.createElement('iframe');
+            testIframe.src = multipleCalendarUrl;
+            testIframe.style.cssText = 'width: 100%; height: 400px; border: 2px solid #0066cc; border-radius: 8px; margin: 10px 0;';
+            testIframe.title = 'Multiple Calendar Test';
+            
+            document.getElementById('code-test-results').appendChild(testIframe);
+            
+            logCodeTest('✅ Multiple calendar iframe created above!', 'success');
+            logCodeTest('This shows how multiple calendars can be combined in one embed.', 'info');
+            logCodeTest('If this works, you can use this approach in Subsplash!', 'success');
+        }
+        
+        // Auto-test basic API when page loads
+        window.addEventListener('load', function() {
+            setTimeout(testBasicAPI, 1000);
+        });
+    </script>
+</body>
+</html>

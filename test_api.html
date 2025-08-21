@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Calendar API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #results {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Google Calendar API Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Your API Key</h2>
+        <p>This test will help verify if your Google Calendar API key is working correctly.</p>
+        
+        <label for="apiKey">Your Google Calendar API Key:</label>
+        <input type="text" id="apiKey" value="AIzaSyDsziwqmTqdxpulFhSmR5aa55aKK3HzcKs" placeholder="Enter your API key">
+        
+        <label for="calendarId">Calendar ID to Test:</label>
+        <input type="text" id="calendarId" value="primary" placeholder="Enter calendar ID (e.g., 'primary' for your main calendar)">
+        
+        <br><br>
+        <button onclick="testAPI()">Test API Connection</button>
+        <button onclick="testWithPrimary()">Test with 'primary' Calendar</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>How to Get Real Calendar IDs</h2>
+        <ol>
+            <li>Go to <a href="https://calendar.google.com" target="_blank">Google Calendar</a></li>
+            <li>In the left sidebar, find your calendars</li>
+            <li>Click the three dots (⋮) next to each calendar name</li>
+            <li>Select "Settings and sharing"</li>
+            <li>Scroll down to "Integrate calendar"</li>
+            <li>Copy the <strong>Calendar ID</strong> (it should look like <code>example@gmail.com</code> or <code>example@group.calendar.google.com</code>)</li>
+        </ol>
+        
+        <h3>Common Calendar IDs:</h3>
+        <ul>
+            <li><code>primary</code> - Your main Google Calendar</li>
+            <li><code>your.email@gmail.com</code> - Your personal calendar</li>
+            <code>example@group.calendar.google.com</code> - A shared/group calendar</li>
+        </ul>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#17a2b8';
+            
+            results.innerHTML += `<div style="color: ${color}; margin: 5px 0;"><strong>[${timestamp}]</strong> ${message}</div>`;
+            
+            // Also log to console
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        function testAPI() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const calendarId = document.getElementById('calendarId').value.trim();
+            
+            if (!apiKey) {
+                log('Please enter your API key', 'error');
+                return;
+            }
+            
+            if (!calendarId) {
+                log('Please enter a calendar ID', 'error');
+                return;
+            }
+            
+            log(`Testing API with calendar ID: ${calendarId}`, 'info');
+            
+            const testUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?key=${apiKey}&timeMin=${new Date().toISOString()}&maxResults=5`;
+            
+            log(`Making request to: ${testUrl}`, 'info');
+            
+            fetch(testUrl)
+                .then(response => {
+                    log(`Response status: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    log('API call successful!', 'success');
+                    log(`Calendar name: ${data.summary || 'Unknown'}`, 'info');
+                    log(`Events found: ${data.items ? data.items.length : 0}`, 'info');
+                    
+                    if (data.items && data.items.length > 0) {
+                        log('Sample events:', 'info');
+                        data.items.forEach((event, index) => {
+                            log(`  ${index + 1}. ${event.summary || 'No title'} - ${event.start?.dateTime || event.start?.date || 'No date'}`, 'info');
+                        });
+                    }
+                })
+                .catch(error => {
+                    log(`API call failed: ${error.message}`, 'error');
+                    
+                    if (error.message.includes('404')) {
+                        log('404 error usually means the calendar ID is incorrect or the calendar is not accessible', 'error');
+                        log('Try using "primary" as the calendar ID to test your main calendar', 'info');
+                    } else if (error.message.includes('403')) {
+                        log('403 error means the API key does not have permission to access this calendar', 'error');
+                        log('Check your API key permissions in Google Cloud Console', 'info');
+                    } else if (error.message.includes('400')) {
+                        log('400 error means there is an issue with the request format', 'error');
+                        log('Check that your API key is valid', 'info');
+                    }
+                });
+        }
+        
+        function testWithPrimary() {
+            document.getElementById('calendarId').value = 'primary';
+            testAPI();
+        }
+        
+        // Auto-test with primary calendar when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Page loaded. Ready to test Google Calendar API.', 'info');
+            log('Click "Test with primary Calendar" to test your main calendar.', 'info');
+        });
+    </script>
+</body>
+</html>
