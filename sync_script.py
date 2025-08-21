@@ -132,43 +132,51 @@ class SubsplashCalendarSync:
             return False
     
     def authenticate_google(self):
-        """Authenticate with Google Calendar API"""
+        """Authenticate with Google Calendar API using OAuth 2.0"""
         try:
-            # Check for service account credentials
-            credentials_file = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
+            # Use OAuth 2.0 authentication
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            SCOPES = ['https://www.googleapis.com/auth/calendar']
             
-            if os.path.exists(credentials_file):
-                # Use service account authentication
-                from google.oauth2 import service_account
-                SCOPES = ['https://www.googleapis.com/auth/calendar']
-                credentials = service_account.Credentials.from_service_account_file(
-                    credentials_file, scopes=SCOPES)
-                logger.info("✅ Service account authentication successful")
-            else:
-                # Use OAuth 2.0 authentication
-                from google_auth_oauthlib.flow import InstalledAppFlow
-                SCOPES = ['https://www.googleapis.com/auth/calendar']
-                
-                creds = None
-                if os.path.exists('token.pickle'):
+            creds = None
+            if os.path.exists('token.pickle'):
+                try:
                     with open('token.pickle', 'rb') as token:
                         creds = pickle.load(token)
-                
-                if not creds or not creds.valid:
-                    if creds and creds.expired and creds.refresh_token:
-                        creds.refresh(Request())
+                    logger.info("✅ Loaded existing OAuth token")
+                except Exception as e:
+                    logger.warning(f"Could not load existing token: {str(e)}")
+                    creds = None
+            
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    logger.info("🔄 Refreshing expired OAuth token...")
+                    creds.refresh(Request())
+                    logger.info("✅ OAuth token refreshed successfully")
+                else:
+                    logger.info("🔐 Starting OAuth 2.0 flow...")
+                    # For GitHub Actions, we need to handle headless authentication
+                    if os.getenv('GITHUB_ACTIONS') == 'true':
+                        logger.error("❌ OAuth 2.0 interactive flow not supported in GitHub Actions")
+                        logger.info("💡 Use service account credentials for GitHub Actions")
+                        return False
                     else:
+                        # Local development - interactive OAuth flow
                         flow = InstalledAppFlow.from_client_secrets_file(
                             'credentials.json', SCOPES)
                         creds = flow.run_local_server(port=0)
-                    
+                        logger.info("✅ OAuth 2.0 flow completed")
+                
+                # Save the credentials for next run
+                try:
                     with open('token.pickle', 'wb') as token:
                         pickle.dump(creds, token)
-                
-                credentials = creds
-                logger.info("✅ OAuth 2.0 authentication successful")
+                    logger.info("💾 OAuth token saved for future use")
+                except Exception as e:
+                    logger.warning(f"Could not save token: {str(e)}")
             
-            self.google_service = build('calendar', 'v3', credentials=credentials)
+            self.google_service = build('calendar', 'v3', credentials=creds)
+            logger.info("✅ Google Calendar API service created successfully")
             return True
             
         except Exception as e:
@@ -470,8 +478,9 @@ class SubsplashCalendarSync:
             if not self.setup_browser():
                 return False
             
-            # Authenticate with Google
+            # Authenticate with Google (both test and production modes)
             if not self.authenticate_google():
+                logger.error("❌ Google authentication failed, cannot proceed")
                 return False
             
             # Sync each calendar
@@ -483,6 +492,11 @@ class SubsplashCalendarSync:
                     events = self.scrape_calendar(calendar_type)
                     
                     if events:
+                        # Log events for debugging
+                        logger.info(f"✅ Found {len(events)} events")
+                        for i, event in enumerate(events[:3]):
+                            logger.info(f"  Event {i+1}: {event['title']} at {event['time']} -> {event['datetime']}")
+                        
                         # Sync to Google Calendar
                         self.sync_to_google_calendar(events, calendar_type)
                     else:
@@ -492,7 +506,7 @@ class SubsplashCalendarSync:
                     logger.error(f"❌ Error processing {calendar_type} calendar: {str(e)}")
                     continue
             
-            logger.info("✅ Calendar sync completed")
+            logger.info("✅ Calendar sync completed successfully")
             return True
             
         except Exception as e:
