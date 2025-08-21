@@ -339,7 +339,25 @@ class SubsplashCalendarSync:
                             title = elem.text.strip()[:100] if elem.text else "NO_TEXT"
                             classes = elem.get_attribute('class') or "NO_CLASS"
                             tag = elem.tag_name
+                            
+                            # Detailed debugging to find where real times are stored
                             logger.info(f"  Element {i}: Tag='{tag}' Class='{classes}' Text='{title}'")
+                            
+                            # Look for time-specific elements within this event
+                            time_elements = elem.find_elements(By.CSS_SELECTOR, '.fc-event-time, .fc-event-title, [class*="time"], [class*="title"]')
+                            logger.info(f"    Time-related sub-elements: {len(time_elements)}")
+                            for j, time_elem in enumerate(time_elements):
+                                try:
+                                    time_text = time_elem.text.strip()[:50] if time_elem.text else "NO_TEXT"
+                                    time_class = time_elem.get_attribute('class') or "NO_CLASS"
+                                    logger.info(f"      Sub-element {j}: class='{time_class}' text='{time_text}'")
+                                except Exception as sub_e:
+                                    logger.info(f"      Sub-element {j}: Error getting info: {sub_e}")
+                            
+                            # Look for any data attributes that might contain time info
+                            data_attrs = elem.get_attribute('outerHTML')[:500] if elem.get_attribute('outerHTML') else "NO_HTML"
+                            logger.info(f"    HTML preview: {data_attrs}")
+                            
                         except Exception as debug_e:
                             logger.info(f"  Element {i}: Error getting info: {debug_e}")
                     
@@ -461,24 +479,71 @@ class SubsplashCalendarSync:
         return unique_elements
     
     def _extract_fc_event(self, event_element, month: str, year: str, calendar_type: str) -> Optional[Dict]:
-        """Extract event data from any event element by getting text directly"""
+        """Extract event data from a FullCalendar event element"""
         try:
             # Get the text content directly from the element
             title = event_element.text.strip()
             if not title or len(title) < 3:
                 return None
             
-            # For now, use the current month/year context since we can't determine exact dates
-            # This is a limitation but will at least get us events
+            # Parse the time from the event text (e.g., "10:30a Early Morning Prayer")
+            time_str = ""
+            if '\n' in title:
+                time_part, event_title = title.split('\n', 1)
+                time_str = time_part.strip()
+                title = event_title.strip()
+            else:
+                # Try to extract time from the beginning of the text
+                parts = title.split()
+                if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
+                    time_str = parts[0]
+                    title = ' '.join(parts[1:])
+            
+            # Try to find the actual date for this event
+            date_str = None
+            
+            # First try: Look for data-date attribute in ancestor cells
             try:
-                # Parse month name to number
-                month_num = datetime.strptime(month, '%B').month
-                year_num = int(year)
-                # Use the first day of the month as a fallback
-                date_str = f"{year_num}-{month_num:02d}-01"
+                date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
+                if date_cell:
+                    date_str = date_cell.get_attribute('data-date')
+                    logger.debug(f"Found date from ancestor cell: {date_str}")
             except:
-                # Use current date as fallback
-                date_str = datetime.now().strftime('%Y-%m-%d')
+                pass
+            
+            # Second try: Look for date in parent elements
+            if not date_str:
+                try:
+                    parent_elements = event_element.find_elements(By.XPATH, './ancestor::*')
+                    for parent in parent_elements:
+                        try:
+                            parent_date = parent.get_attribute('data-date')
+                            if parent_date and len(parent_date) == 10:  # YYYY-MM-DD format
+                                date_str = parent_date
+                                logger.debug(f"Found date from parent element: {date_str}")
+                                break
+                        except:
+                            continue
+                except:
+                    pass
+            
+            # Third try: Use the current month/year context as fallback
+            if not date_str:
+                try:
+                    # Parse month name to number
+                    month_num = datetime.strptime(month, '%B').month
+                    year_num = int(year)
+                    # Use the first day of the month as a fallback
+                    date_str = f"{year_num}-{month_num:02d}-01"
+                    logger.warning(f"Using fallback date for event '{title}': {date_str}")
+                except:
+                    # Use current date as fallback
+                    date_str = datetime.now().strftime('%Y-%m-%d')
+                    logger.warning(f"Using current date as fallback for event '{title}': {date_str}")
+            
+            if not date_str:
+                logger.warning(f"Could not determine date for event: {title}")
+                return None
             
             # Parse the date
             try:
@@ -487,24 +552,27 @@ class SubsplashCalendarSync:
                 logger.warning(f"Could not parse date: {date_str}")
                 return None
             
-            # Create a simple event object
+            # Parse the time and create start/end times
+            start_time, end_time = self._parse_fc_time(time_str, event_date)
+            
+            # Create event object
             event = {
                 'title': title,
-                'start': event_date.replace(hour=0, minute=0, second=0, microsecond=0),
-                'end': event_date.replace(hour=23, minute=59, second=0, microsecond=0),
+                'start': start_time,
+                'end': end_time,
                 'date': date_str,
-                'time': "All day",  # Default to all-day since we can't determine time
+                'time': time_str,
                 'month': month,
                 'year': year,
                 'calendar_type': calendar_type,
                 'url': f"https://antiochboone.com/calendar-{calendar_type}",
-                'all_day': True,
+                'all_day': self._is_all_day_event(start_time, end_time),
                 'source': 'Subsplash',
                 'location': 'Antioch Boone',
                 'unique_id': f"{calendar_type}_{date_str}_{title.lower().replace(' ', '_')}"
             }
             
-            logger.info(f"✅ Extracted event: '{title}' from element with class '{event_element.get_attribute('class')}'")
+            logger.info(f"✅ Extracted event: '{title}' on {date_str} at {time_str}")
             return event
             
         except Exception as e:
