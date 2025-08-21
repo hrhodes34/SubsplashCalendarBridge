@@ -400,7 +400,7 @@ class SubsplashCalendarSync:
                 'time': time_str,
                 'calendar_type': calendar_type,
                 'url': f"https://antiochboone.com/calendar-{calendar_type}",
-                'all_day': self._is_all_day_event(start_time, end_time),
+                'all_day': False,  # All events are timed events
                 'source': 'Subsplash',
                 'location': 'Antioch Boone',
                 'unique_id': f"{calendar_type}_{date_str}_{event_title.lower().replace(' ', '_')}"
@@ -509,12 +509,12 @@ class SubsplashCalendarSync:
                     # Only one time found, use it
                     return all_times[0]
             
-            # No time found
-            return "all day"
+            # No time found, return empty string to trigger default time
+            return ""
             
         except Exception as e:
             logger.warning(f"Could not extract time: {str(e)}")
-            return "all day"
+            return ""
     
     def _extract_date_from_element(self, element) -> Optional[str]:
         """Extract date from event element"""
@@ -545,10 +545,12 @@ class SubsplashCalendarSync:
     def _parse_time_with_offset(self, time_str: str, event_date: datetime) -> Tuple[datetime, datetime]:
         """Parse time and convert to Eastern Time using proper timezone conversion"""
         try:
-            if not time_str or time_str.lower() in ['all day', 'all-day', '']:
-                # No time specified, treat as all-day event
-                start_time = event_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_time = start_time + timedelta(days=1)
+            if not time_str or time_str.lower() in ['', 'invalid', 'error', 'all day', 'all-day']:
+                # No valid time specified, use a default time (9:00 AM)
+                logger.warning(f"No valid time found for '{time_str}', using default 9:00 AM")
+                eastern_tz = pytz.timezone('America/New_York')
+                start_time = eastern_tz.localize(event_date.replace(hour=9, minute=0, second=0, microsecond=0))
+                end_time = start_time + timedelta(hours=1)
                 return start_time, end_time
             
             # Parse time formats like "6:30a", "5:15p", "10:00", "6:30am", "5:15pm"
@@ -594,10 +596,11 @@ class SubsplashCalendarSync:
             
             # Validate hour and minute
             if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-                logger.warning(f"Invalid time values: hour={hour}, minute={minute}")
-                # Fallback to all-day event
-                start_time = event_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_time = start_time + timedelta(days=1)
+                logger.warning(f"Invalid time values: hour={hour}, minute={minute}, using default 9:00 AM")
+                # Fallback to default time instead of all-day
+                eastern_tz = pytz.timezone('America/New_York')
+                start_time = eastern_tz.localize(event_date.replace(hour=9, minute=0, second=0, microsecond=0))
+                end_time = start_time + timedelta(hours=1)
                 return start_time, end_time
             
             # Create start time in local timezone (assume Eastern Time)
@@ -613,28 +616,16 @@ class SubsplashCalendarSync:
             return start_time, end_time
             
         except Exception as e:
-            logger.warning(f"Error parsing time '{time_str}': {str(e)}")
-            # Fallback: create all-day event
+            logger.warning(f"Error parsing time '{time_str}': {str(e)}, using default 9:00 AM")
+            # Fallback: use default time instead of all-day
             eastern_tz = pytz.timezone('America/New_York')
-            start_time = eastern_tz.localize(event_date.replace(hour=0, minute=0, second=0, microsecond=0))
-            end_time = start_time + timedelta(days=1)
+            start_time = eastern_tz.localize(event_date.replace(hour=9, minute=0, second=0, microsecond=0))
+            end_time = start_time + timedelta(hours=1)
             return start_time, end_time
     
     # Removed old timezone offset methods - now using proper timezone conversion with pytz
     
-    def _is_all_day_event(self, start_time: datetime, end_time: datetime) -> bool:
-        """Check if event is all-day based on start and end times"""
-        if not start_time or not end_time:
-            return False
-        
-        # Check if the event was originally marked as "all day" in the source
-        # We'll use the event's 'time' field to determine this
-        # If time is "all day", then it's truly an all-day event
-        # Otherwise, it's a timed event (even if our timezone offset makes it appear at midnight)
-        
-        # For now, let's be conservative and only mark as all-day if explicitly specified
-        # This will be handled in the event extraction logic
-        return False
+    # All events are now timed events - no more all-day events
     
     def _navigate_to_next_month(self) -> bool:
         """Navigate to the next month in the calendar"""
