@@ -467,22 +467,14 @@ class SubsplashCalendarSync:
             # Look for time in the element text
             text = element.text.strip()
             
-            # First, check if this is a known event type with a specific time
-            if 'Early Morning Prayer' in text:
-                return '6:30a'  # Always use the correct time for this event
-            elif 'Prayer Set' in text:
-                return '5:15p'  # Always use the correct time for this event
-            
-            # If not a known event type, look for time patterns
-            # But be more selective about which time to use
-            import re
-            
             # Common time patterns
             time_patterns = [
                 r'\b\d{1,2}:\d{2}[ap]?m?\b',  # 6:30a, 5:15pm
                 r'\b\d{1,2}[ap]m\b',          # 6am, 5pm
                 r'\b\d{1,2}:\d{2}\b'          # 14:30
             ]
+            
+            import re
             
             # Find all time patterns in the text
             all_times = []
@@ -491,27 +483,12 @@ class SubsplashCalendarSync:
                 all_times.extend(matches)
             
             if all_times:
-                # If we found multiple times, be smart about which one to use
+                # If we found multiple times, use the first one found
+                # (This is the most reliable approach - use what we actually scrape)
                 if len(all_times) > 1:
-                    # Look for the most likely correct time
-                    # Prefer times that look like actual event times (not 10:30, 9:15, etc.)
-                    preferred_times = []
-                    for time_str in all_times:
-                        time_lower = time_str.lower()
-                        # Prefer times that are likely actual event times
-                        if any(pattern in time_lower for pattern in ['6:30', '5:15', '7:00', '8:00', '9:00']):
-                            preferred_times.append(time_str)
-                    
-                    if preferred_times:
-                        # Use the first preferred time
-                        return preferred_times[0]
-                    else:
-                        # If no preferred times, use the first one but log a warning
-                        logger.warning(f"Multiple times found, using first: {all_times[0]} from text: {text}")
-                        return all_times[0]
-                else:
-                    # Only one time found, use it
-                    return all_times[0]
+                    logger.info(f"Multiple times found in text '{text}': {all_times}, using first: {all_times[0]}")
+                
+                return all_times[0]
             
             # No time found
             return "all day"
