@@ -214,6 +214,7 @@ class SubsplashCalendarSync:
             WebDriverWait(self.browser, self.browser_wait_time).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, '.fc-daygrid-body, .fc-view-container'))
             )
+<<<<<<< HEAD
             
             events = []
             
@@ -229,6 +230,59 @@ class SubsplashCalendarSync:
                 # Check current month and next few months
                 while months_checked < self.max_months_to_check and empty_months < 3:
                     logger.info(f"📅 Checking month {months_checked + 1}")
+=======
+            logger.info("✅ Calendar container found")
+            # Additional wait for FullCalendar to render events
+            logger.info("Waiting 3 seconds for FullCalendar to render events...")
+            time.sleep(3)
+        except TimeoutException:
+            logger.warning("❌ Calendar container not found, proceeding anyway...")
+            
+            # Debug: Let's see what's actually on the page
+            logger.info("🔍 DEBUG: Analyzing page structure...")
+            try:
+                page_title = self.browser.title
+                logger.info(f"Page title: {page_title}")
+                
+                # Look for any calendar-related elements
+                calendar_elements = self.browser.find_elements(By.CSS_SELECTOR, '[class*="calendar"], [class*="fc"], [class*="event"]')
+                logger.info(f"Found {len(calendar_elements)} elements with calendar/event-related classes")
+                
+                # Check for common FullCalendar elements
+                fc_elements = self.browser.find_elements(By.CSS_SELECTOR, '.fc-toolbar, .fc-view, .fc-day, .fc-event')
+                logger.info(f"Found {len(fc_elements)} FullCalendar elements")
+                
+                # Log the first few elements for debugging
+                for i, elem in enumerate(fc_elements[:5]):
+                    try:
+                        logger.info(f"FC Element {i}: {elem.tag_name} - class='{elem.get_attribute('class')}' - text='{elem.text[:100]}'")
+                    except:
+                        logger.info(f"FC Element {i}: Error getting info")
+                        
+            except Exception as debug_e:
+                logger.error(f"Error during page analysis: {debug_e}")
+
+        # Try the simple, working FullCalendar selector first
+        event_selectors = [
+            'a.fc-event',  # This is what actually works
+        ]
+        
+        event_elements = []
+        used_selector = None
+        
+        # Try the working selector
+        logger.info("🔍 Trying FullCalendar event selector...")
+        for selector in event_selectors:
+            try:
+                logger.info(f"  Trying selector: '{selector}'")
+                elements = self.browser.find_elements(By.CSS_SELECTOR, selector)
+                logger.info(f"  Found {len(elements)} elements with selector '{selector}'")
+                
+                if elements:
+                    event_elements = elements
+                    used_selector = selector
+                    logger.info(f"✅ SUCCESS: Found {len(elements)} events using selector: {selector}")
+>>>>>>> parent of b1d1c9c (stuf)
                     
                     # Extract events from current month view
                     month_events = self._extract_month_events(calendar_type)
@@ -256,11 +310,44 @@ class SubsplashCalendarSync:
             logger.error(f"❌ Error scraping {calendar_type} calendar: {str(e)}")
             return []
     
+<<<<<<< HEAD
     def _scrape_august_events(self, calendar_type: str) -> List[Dict]:
         """TEST MODE: Scrape events specifically from August"""
+=======
+    def _deduplicate_event_elements(self, event_elements) -> List:
+        """Deduplicate event elements to prevent multiple copies of the same event"""
+        unique_elements = []
+        seen_titles = set()
+        
+        for element in event_elements:
+            try:
+                # Get the text content directly
+                title = element.text.strip()
+                if not title or len(title) < 3:
+                    continue
+                
+                # Simple deduplication: if we've seen this title before, skip it
+                if title not in seen_titles:
+                    seen_titles.add(title)
+                    unique_elements.append(element)
+                    logger.debug(f"Added unique event: {title}")
+                else:
+                    logger.debug(f"Skipped duplicate event: {title}")
+                    
+            except Exception as e:
+                logger.debug(f"Error during deduplication: {e}")
+                continue
+        
+        logger.info(f"Deduplication: {len(event_elements)} total elements -> {len(unique_elements)} unique elements")
+        return unique_elements
+    
+    def _extract_fc_event(self, event_element, month: str, year: str, calendar_type: str) -> Optional[Dict]:
+        """Extract event data from a FullCalendar event element"""
+>>>>>>> parent of b1d1c9c (stuf)
         try:
             logger.info(f"🧪 Scraping {self.target_month} {self.target_year} events...")
             
+<<<<<<< HEAD
             # Check if we're already in August
             current_month_year = self._get_current_month_year()
             logger.info(f"📅 Current view: {current_month_year}")
@@ -376,6 +463,65 @@ class SubsplashCalendarSync:
             event_title = self._extract_clean_title(element)
             if not event_title or len(event_title) < 3:
                 logger.debug(f"⚠️ Skipping element - title too short or empty: '{event_title}'")
+=======
+            # Parse the time from the event text (e.g., "10:30a Early Morning Prayer")
+            time_str = ""
+            if '\n' in title:
+                time_part, event_title = title.split('\n', 1)
+                time_str = time_part.strip()
+                title = event_title.strip()
+            else:
+                # Try to extract time from the beginning of the text
+                parts = title.split()
+                if parts and any(char in parts[0].lower() for char in ['a', 'p', ':']):
+                    time_str = parts[0]
+                    title = ' '.join(parts[1:])
+            
+            # Try to find the actual date for this event
+            date_str = None
+            
+            # First try: Look for data-date attribute in ancestor cells
+            try:
+                date_cell = event_element.find_element(By.XPATH, './ancestor::td[@data-date]')
+                if date_cell:
+                    date_str = date_cell.get_attribute('data-date')
+                    logger.debug(f"Found date from ancestor cell: {date_str}")
+            except:
+                pass
+            
+            # Second try: Look for date in parent elements
+            if not date_str:
+                try:
+                    parent_elements = event_element.find_elements(By.XPATH, './ancestor::*')
+                    for parent in parent_elements:
+                        try:
+                            parent_date = parent.get_attribute('data-date')
+                            if parent_date and len(parent_date) == 10:  # YYYY-MM-DD format
+                                date_str = parent_date
+                                logger.debug(f"Found date from parent element: {date_str}")
+                                break
+                        except:
+                            continue
+                except:
+                    pass
+            
+            # Third try: Use the current month/year context as fallback
+            if not date_str:
+                try:
+                    # Parse month name to number
+                    month_num = datetime.strptime(month, '%B').month
+                    year_num = int(year)
+                    # Use the first day of the month as a fallback
+                    date_str = f"{year_num}-{month_num:02d}-01"
+                    logger.warning(f"Using fallback date for event '{title}': {date_str}")
+                except:
+                    # Use current date as fallback
+                    date_str = datetime.now().strftime('%Y-%m-%d')
+                    logger.warning(f"Using current date as fallback for event '{title}': {date_str}")
+            
+            if not date_str:
+                logger.warning(f"Could not determine date for event: {title}")
+>>>>>>> parent of b1d1c9c (stuf)
                 return None
             
             # Get event date from the element or its parent
@@ -393,7 +539,7 @@ class SubsplashCalendarSync:
             
             # Create event object
             event = {
-                'title': event_title,
+                'title': title,
                 'start': start_time,
                 'end': end_time,
                 'date': date_str,
@@ -403,9 +549,10 @@ class SubsplashCalendarSync:
                 'all_day': False,  # All events are timed events
                 'source': 'Subsplash',
                 'location': 'Antioch Boone',
-                'unique_id': f"{calendar_type}_{date_str}_{event_title.lower().replace(' ', '_')}"
+                'unique_id': f"{calendar_type}_{date_str}_{title.lower().replace(' ', '_')}"
             }
             
+<<<<<<< HEAD
             logger.info(f"✅ Extracted event: '{event_title}' on {date_str} at {time_str} → {start_time.strftime('%I:%M %p %Z')}")
             logger.debug(f"   Raw text: '{raw_text}'")
             logger.debug(f"   Clean title: '{event_title}'")
@@ -413,6 +560,9 @@ class SubsplashCalendarSync:
             logger.debug(f"   Parsed start (Eastern): {start_time.strftime('%Y-%m-%d %I:%M %p %Z')}")
             logger.debug(f"   Parsed end (Eastern): {end_time.strftime('%Y-%m-%d %I:%M %p %Z')}")
             
+=======
+            logger.info(f"✅ Extracted event: '{title}' on {date_str} at {time_str}")
+>>>>>>> parent of b1d1c9c (stuf)
             return event
             
         except Exception as e:
@@ -422,6 +572,7 @@ class SubsplashCalendarSync:
     def _extract_clean_title(self, element) -> str:
         """Extract clean event title without time information"""
         try:
+<<<<<<< HEAD
             # Get the full text from the element
             full_text = element.text.strip()
             if not full_text:
@@ -551,47 +702,30 @@ class SubsplashCalendarSync:
                 eastern_tz = pytz.timezone('America/New_York')
                 start_time = eastern_tz.localize(event_date.replace(hour=9, minute=0, second=0, microsecond=0))
                 end_time = start_time + timedelta(hours=1)
+=======
+            if not time_str:
+                # No time specified, treat as all-day event
+                start_time = event_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_time = start_time + timedelta(days=1)
+>>>>>>> parent of b1d1c9c (stuf)
                 return start_time, end_time
             
-            # Parse time formats like "6:30a", "5:15p", "10:00", "6:30am", "5:15pm"
+            # Parse time formats like "6:30a", "5:15p", "10:00"
             time_str = time_str.lower().strip()
             
-            # Handle AM/PM variations
-            is_am = False
-            is_pm = False
-            
-            if 'a' in time_str and 'm' not in time_str:
-                # Handle "6:30a" format
+            # Handle AM/PM
+            if 'a' in time_str:
                 time_str = time_str.replace('a', '').strip()
-                is_am = True
-            elif 'am' in time_str:
-                # Handle "6:30am" format
-                time_str = time_str.replace('am', '').strip()
-                is_am = True
-            elif 'p' in time_str and 'm' not in time_str:
-                # Handle "5:15p" format
-                time_str = time_str.replace('p', '').strip()
-                is_pm = True
-            elif 'pm' in time_str:
-                # Handle "5:15pm" format
-                time_str = time_str.replace('pm', '').strip()
-                is_pm = True
-            
-            # Parse hour and minute
-            if ':' in time_str:
-                hour, minute = map(int, time_str.split(':'))
-            else:
-                # Handle "6a" format (just hour)
-                hour = int(time_str)
-                minute = 0
-            
-            # Apply AM/PM logic
-            if is_am:
+                hour = int(time_str.split(':')[0])
                 if hour == 12:
                     hour = 0
-            elif is_pm:
+                minute = int(time_str.split(':')[1])
+            elif 'p' in time_str:
+                time_str = time_str.replace('p', '').strip()
+                hour = int(time_str.split(':')[0])
                 if hour != 12:
                     hour += 12
+<<<<<<< HEAD
             # If neither AM nor PM specified, assume 24-hour format
             
             # Validate hour and minute
@@ -602,16 +736,27 @@ class SubsplashCalendarSync:
                 start_time = eastern_tz.localize(event_date.replace(hour=9, minute=0, second=0, microsecond=0))
                 end_time = start_time + timedelta(hours=1)
                 return start_time, end_time
+=======
+                minute = int(time_str.split(':')[1])
+            else:
+                # 24-hour format
+                hour, minute = map(int, time_str.split(':'))
+>>>>>>> parent of b1d1c9c (stuf)
             
             # Create start time in local timezone (assume Eastern Time)
             # The website times are already in Eastern Time, so we just need to make them timezone-aware
             eastern_tz = pytz.timezone('America/New_York')
             start_time = eastern_tz.localize(event_date.replace(hour=hour, minute=minute, second=0, microsecond=0))
             
+<<<<<<< HEAD
             # Default duration: 1 hour for most events
             end_time = start_time + timedelta(hours=1)
             
             logger.debug(f"🕐 Parsed time: {time_str} → {start_time.strftime('%I:%M %p %Z')}")
+=======
+            # Default duration: 1 hour
+            end_time = start_time + timedelta(hours=1)
+>>>>>>> parent of b1d1c9c (stuf)
             
             return start_time, end_time
             
@@ -636,9 +781,86 @@ class SubsplashCalendarSync:
                 next_button.click()
                 return True
             return False
+<<<<<<< HEAD
         except Exception as e:
             logger.warning(f"Could not navigate to next month: {str(e)}")
             return False
+=======
+        
+        return (start_time.hour == 0 and start_time.minute == 0 and 
+                end_time.hour == 0 and end_time.minute == 0)
+    
+    def scrape_calendar_events(self, calendar_type: str) -> List[Dict]:
+        """Scrape events from a specific calendar type for multiple months"""
+        all_events = []
+        empty_month_count = 0
+        
+        try:
+            if not self.setup_browser():
+                return all_events
+            
+            # Navigate to the calendar page
+            calendar_url = self.calendar_urls.get(calendar_type)
+            if not calendar_url:
+                logger.error(f"No URL found for calendar type: {calendar_type}")
+                return all_events
+            
+            logger.info(f"Navigating to {calendar_type} calendar: {calendar_url}")
+            self.browser.get(calendar_url)
+            
+            # Wait for page to load
+            time.sleep(5)
+            
+            # Start with current month
+            current_month, current_year = self.get_current_month_year()
+            logger.info(f"Starting with current month: {current_month} {current_year}")
+            
+            # Scrape current month
+            current_events = self.scrape_current_month_events(calendar_type)
+            all_events.extend(current_events)
+            logger.info(f"Collected {len(current_events)} events from {current_month}")
+            
+            if not current_events:
+                empty_month_count += 1
+            
+            # Navigate through additional months
+            for month_num in range(1, self.max_months_to_check):
+                logger.info(f"Navigating to month {month_num + 1}...")
+                
+                # Navigate to next month
+                if not self.navigate_to_next_month():
+                    logger.error(f"Failed to navigate to month {month_num + 1}")
+                    break
+                
+                # Verify we're on the right month
+                actual_month, actual_year = self.get_current_month_year()
+                logger.info(f"Calendar shows: {actual_month} {actual_year}")
+                
+                # Scrape this month's events
+                month_events = self.scrape_current_month_events(calendar_type)
+                all_events.extend(month_events)
+                logger.info(f"Collected {len(month_events)} events from {actual_month}")
+                
+                if not month_events:
+                    empty_month_count += 1
+                    if empty_month_count >= self.max_consecutive_empty_months:
+                        logger.info(f"Reached {self.max_consecutive_empty_months} consecutive empty months, stopping")
+                        break
+                else:
+                    empty_month_count = 0  # Reset counter
+                
+                # Small delay between months
+                time.sleep(2)
+            
+            return all_events
+            
+        except Exception as e:
+            logger.error(f"Error scraping {calendar_type} calendar: {str(e)}")
+            return all_events
+        finally:
+            if self.browser:
+                self.browser.quit()
+>>>>>>> parent of b1d1c9c (stuf)
     
     def sync_events_to_google(self, events: List[Dict], calendar_type: str) -> bool:
         """Sync events to Google Calendar"""
@@ -790,7 +1012,19 @@ class SubsplashCalendarSync:
                     
                     if events:
                         # Sync to Google Calendar
+<<<<<<< HEAD
                         self.sync_events_to_google(events, calendar_type)
+=======
+                        sync_result = self.sync_events_to_google_calendar(events, calendar_type)
+                        sync_results['calendar_results'][calendar_type] = sync_result
+                        sync_results['total_events_processed'] += len(events)
+                        
+                        if sync_result['success']:
+                            sync_results['calendars_processed'] += 1
+                            logger.info(f"Successfully synced {calendar_type}: {sync_result['created']} created, {sync_result['updated']} updated")
+                        else:
+                            logger.error(f"Failed to sync {calendar_type}: {sync_result.get('error', 'Unknown error')}")
+>>>>>>> parent of b1d1c9c (stuf)
                     else:
                         logger.info(f"No events found for {calendar_type} calendar")
                 
